@@ -1,0 +1,344 @@
+<script>
+  /**
+   * Tournament Management View Controller (Organizer Control Room)
+   */
+  App.views.tournament_manage = function(params = {}) {
+    const container = document.getElementById('app-view');
+    const tournamentId = params.tournamentId;
+
+    if (!tournamentId) {
+      container.innerHTML = `<div class="card"><p>Thiếu tham số tournamentId</p></div>`;
+      return;
+    }
+
+    container.innerHTML = `
+      <div id="tournament-manage-wrapper">
+        <div class="loader-center"><div class="spinner"></div><p>Đang tải thông tin quản lý...</p></div>
+      </div>
+    `;
+
+    loadTournamentManageData(tournamentId);
+  };
+
+  let currentManageTournament = null;
+  let currentActiveTsId = '';
+
+  function loadTournamentManageData(tournamentId) {
+    const clientEmail = App.state.user.email || localStorage.getItem('user_email') || '';
+
+    // SINGLE 1-ROUND-TRIP HIGH-PERFORMANCE BUNDLE CALL!
+    App.server.call('apiGetTournamentManageBundle', tournamentId, clientEmail)
+      .then(bundle => {
+        if (!bundle || !bundle.tournament) throw new Error('Không tìm thấy thông tin giải đấu.');
+
+        if (bundle.authContext) {
+          App.state.user = Object.assign({}, App.state.user, bundle.authContext);
+          App.updateUserBadge();
+        }
+
+        currentManageTournament = bundle.tournament;
+        if (bundle.tournament.sports && bundle.tournament.sports.length > 0) {
+          currentActiveTsId = bundle.tournament.sports[0].ts_id;
+        }
+
+        renderTournamentManage();
+        renderAssignedRefereesList(bundle.assignedRoles || []);
+        if (bundle.firstTsTeams && currentActiveTsId) {
+          renderTsTeamsAndFixturesPanel(currentActiveTsId, bundle.firstTsTeams);
+        }
+      })
+      .catch(err => {
+        App.toast.show('Lỗi: ' + err.message, 'error');
+      });
+  }
+
+  function renderTournamentManage() {
+    const wrapper = document.getElementById('tournament-manage-wrapper');
+    if (!wrapper || !currentManageTournament) return;
+
+    const t = currentManageTournament;
+
+    wrapper.innerHTML = `
+      <!-- Header Bar -->
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5rem; flex-wrap:wrap; gap:1rem;">
+        <div>
+          <div style="display:flex; align-items:center; gap:0.75rem; margin-bottom:0.25rem;">
+            <h2>⚙️ Quản lý Giải đấu: ${t.name}</h2>
+            <span class="badge badge-${t.status}">${t.status}</span>
+          </div>
+          <p style="color:var(--text-muted); font-size:0.9rem;">📍 ${t.location} | 📅 ${formatDate(t.start_date)} - ${formatDate(t.end_date)}</p>
+        </div>
+
+        <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
+          ${t.status === 'draft' ? `<button class="btn btn-success btn-sm" onclick="changeTournamentStatus('${t.tournament_id}', 'open')">🔓 Mở Đăng Ký</button>` : ''}
+          ${t.status === 'open' ? `<button class="btn btn-primary btn-sm" onclick="changeTournamentStatus('${t.tournament_id}', 'in_progress')">▶️ Bắt Đầu Thi Đấu</button>` : ''}
+          ${t.status === 'in_progress' ? `<button class="btn btn-secondary btn-sm" onclick="changeTournamentStatus('${t.tournament_id}', 'completed')">🏁 Kết Thúc Giải</button>` : ''}
+          ${t.status === 'draft' ? `<button class="btn btn-danger btn-sm" onclick="deleteCurrentTournament('${t.tournament_id}')">🗑️ Xóa Giải</button>` : ''}
+          <button class="btn btn-secondary btn-sm" onclick="App.router.navigateTo('schedule', { tournamentId: '${t.tournament_id}' })">👀 Xem Lịch & Kết Quả</button>
+        </div>
+      </div>
+
+      <!-- Sports Selector Tabs -->
+      <div class="card" style="margin-bottom:1.5rem;">
+        <h3 style="margin-bottom:1rem; color:var(--primary);">Danh sách Môn Thi Đấu & Sinh Lịch</h3>
+        
+        <div style="display:flex; gap:0.75rem; overflow-x:auto; margin-bottom:1.5rem; padding-bottom:0.5rem;" id="ts-tab-buttons">
+          ${t.sports.map(s => `
+            <button class="btn btn-sm ${s.ts_id === currentActiveTsId ? 'btn-primary' : 'btn-secondary'}" onclick="selectManageTsTab('${s.ts_id}')">
+              ${s.sport_name} (${s.registered_teams_count}/${s.max_teams} đội)
+            </button>
+          `).join('')}
+        </div>
+
+        <!-- Sport Specific Management Panel -->
+        <div id="ts-manage-detail-panel">
+          <div class="loader-center"><div class="spinner"></div><p>Đang tải danh sách đội...</p></div>
+        </div>
+      </div>
+
+      <!-- Assign & Manage Referee Section -->
+      <div class="card">
+        <h3 style="margin-bottom:1rem; color:var(--accent);">Phân Quyền Giám Sát / Trọng Tài & Thu Hồi Quyền</h3>
+        
+        <div class="grid-2" style="margin-bottom:1.5rem;">
+          <div class="form-group">
+            <label class="form-label">Nhập Email Trọng tài cần gán quyền</label>
+            <input type="email" class="form-control" id="referee-email-input" placeholder="trongtai@gmail.com">
+          </div>
+          <div style="display:flex; align-items:flex-end; margin-bottom:1.25rem;">
+            <button class="btn btn-primary" onclick="assignRefereeRole('${t.tournament_id}')">➕ Gán Vai Trò Referee</button>
+          </div>
+        </div>
+
+        <h4 style="margin-bottom:0.75rem;">Danh Sách Trọng Tài Đã Gán Quyền</h4>
+        <div id="assigned-referees-list-container">
+          <div class="loader-center"><div class="spinner"></div><p>Đang tải danh sách trọng tài...</p></div>
+        </div>
+      </div>
+    `;
+  }
+
+  function selectManageTsTab(tsId) {
+    currentActiveTsId = tsId;
+    renderTournamentManage();
+    loadAssignedReferees(currentManageTournament.tournament_id);
+    loadTsTeamsAndFixturesPanel(tsId);
+  }
+
+  function loadTsTeamsAndFixturesPanel(tsId) {
+    const panel = document.getElementById('ts-manage-detail-panel');
+    if (!panel) return;
+    panel.innerHTML = `<div class="loader-center"><div class="spinner"></div><p>Đang tải danh sách đội...</p></div>`;
+
+    App.server.call('apiGetTeamsByTournamentSport', tsId)
+      .then(teams => {
+        renderTsTeamsAndFixturesPanel(tsId, teams || []);
+      })
+      .catch(err => {
+        panel.innerHTML = `<p style="color:var(--danger);">Lỗi tải đội: ${err.message}</p>`;
+      });
+  }
+
+  function renderTsTeamsAndFixturesPanel(tsId, teams) {
+    const panel = document.getElementById('ts-manage-detail-panel');
+    if (!panel || !currentManageTournament) return;
+
+    const currentTs = currentManageTournament.sports.find(s => s.ts_id === tsId);
+    if (!currentTs) return;
+
+    const approvedCount = teams.filter(t => t.status === 'approved').length;
+
+    panel.innerHTML = `
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem; background:rgba(15,23,42,0.5); padding:1rem; border-radius:var(--radius-md);">
+        <div>
+          <p><strong>Thể thức:</strong> ${currentTs.format === 'round_robin' ? 'Vòng tròn' : 'Loại trực tiếp'}</p>
+          <p><strong>Số đội đã duyệt:</strong> ${approvedCount} / ${currentTs.max_teams} đội (Tối thiểu: ${currentTs.min_teams})</p>
+        </div>
+        
+        <button class="btn btn-success" onclick="generateFixturesForTs('${tsId}')">
+          ⚡ Sinh Lịch Thi Đấu Tự Động
+        </button>
+      </div>
+
+      <h4 style="margin-bottom:0.75rem;">Danh Sách Đăng Ký (${teams.length})</h4>
+      
+      <div class="table-container">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Tên Đội</th>
+              <th>Đội Trưởng Email</th>
+              <th>Số VĐV</th>
+              <th>Ngày Đăng Ký</th>
+              <th>Trạng Thái</th>
+              <th>Thao Tác</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${teams.length === 0 ? `<tr><td colspan="6" style="text-align:center;">Chưa có đội nào đăng ký.</td></tr>` : ''}
+            ${teams.map(tm => `
+              <tr>
+                <td><strong>${tm.name}</strong></td>
+                <td>${tm.captain_email}</td>
+                <td>${tm.players ? tm.players.length : 0} người</td>
+                <td>${formatDate(tm.registration_date)}</td>
+                <td><span class="badge badge-${tm.status}">${tm.status}</span></td>
+                <td>
+                  ${tm.status === 'pending' ? `
+                    <button class="btn btn-sm btn-success" onclick="approveTeamReg('${tm.team_id}')">Duyệt</button>
+                    <button class="btn btn-sm btn-danger" onclick="rejectTeamReg('${tm.team_id}')">Từ chối</button>
+                  ` : ''}
+                  ${tm.status === 'approved' ? `
+                    <button class="btn btn-sm btn-secondary" onclick="withdrawTeamReg('${tm.team_id}')">Hủy duyệt</button>
+                  ` : ''}
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    `;
+  }
+
+  function loadAssignedReferees(tournamentId) {
+    App.server.call('apiGetAssignedRoles', tournamentId)
+      .then(roles => {
+        renderAssignedRefereesList((roles || []).filter(r => r.role === 'referee'));
+      })
+      .catch(err => console.log('Lỗi tải trọng tài:', err));
+  }
+
+  function renderAssignedRefereesList(referees) {
+    const container = document.getElementById('assigned-referees-list-container');
+    if (!container) return;
+
+    if (referees.length === 0) {
+      container.innerHTML = `<p style="color:var(--text-muted); font-size:0.9rem; padding:0.5rem 0;">Chưa gán trọng tài nào cho giải đấu này.</p>`;
+      return;
+    }
+
+    container.innerHTML = `
+      <div class="table-container">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Email Trọng Tài</th>
+              <th>Ngày Gán</th>
+              <th>Người Gán</th>
+              <th style="text-align:right;">Thao Tác</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${referees.map(r => `
+              <tr>
+                <td><strong>${r.user_email}</strong></td>
+                <td>${formatDate(r.assigned_at)}</td>
+                <td>${r.assigned_by || 'Organizer'}</td>
+                <td style="text-align:right;">
+                  <button class="btn btn-sm btn-danger" onclick="revokeRefereeRole('${currentManageTournament.tournament_id}', '${r.user_email}')">
+                    🔴 Thu hồi quyền (Revoke)
+                  </button>
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    `;
+  }
+
+  function changeTournamentStatus(tournamentId, status) {
+    const clientEmail = App.state.user.email || localStorage.getItem('user_email') || '';
+    App.server.call('apiUpdateTournamentStatus', tournamentId, status, clientEmail)
+      .then(() => {
+        App.toast.show('Cập nhật trạng thái thành công!', 'success');
+        loadTournamentManageData(tournamentId);
+      })
+      .catch(err => App.toast.show('Lỗi: ' + err.message, 'error'));
+  }
+
+  function approveTeamReg(teamId) {
+    const clientEmail = App.state.user.email || localStorage.getItem('user_email') || '';
+    App.server.call('apiApproveTeam', teamId, clientEmail)
+      .then(() => {
+        App.toast.show('Đã duyệt đội tham gia!', 'success');
+        loadTournamentManageData(currentManageTournament.tournament_id);
+      })
+      .catch(err => App.toast.show('Lỗi: ' + err.message, 'error'));
+  }
+
+  function rejectTeamReg(teamId) {
+    const clientEmail = App.state.user.email || localStorage.getItem('user_email') || '';
+    App.server.call('apiRejectTeam', teamId, clientEmail)
+      .then(() => {
+        App.toast.show('Đã từ chối đơn đăng ký!', 'info');
+        loadTournamentManageData(currentManageTournament.tournament_id);
+      })
+      .catch(err => App.toast.show('Lỗi: ' + err.message, 'error'));
+  }
+
+  function withdrawTeamReg(teamId) {
+    const clientEmail = App.state.user.email || localStorage.getItem('user_email') || '';
+    App.server.call('apiWithdrawTeam', teamId, clientEmail)
+      .then(() => {
+        App.toast.show('Đã hủy trạng thái đội!', 'info');
+        loadTournamentManageData(currentManageTournament.tournament_id);
+      })
+      .catch(err => App.toast.show('Lỗi: ' + err.message, 'error'));
+  }
+
+  function generateFixturesForTs(tsId) {
+    const clientEmail = App.state.user.email || localStorage.getItem('user_email') || '';
+    App.modal.open('Xác nhận Sinh Lịch Thi Đấu', 'Hệ thống sẽ xóa lịch cũ (nếu có) và sinh lịch thi đấu mới cho môn này. Bạn có chắc chắn không?', () => {
+      App.server.call('apiGenerateFixtures', tsId, clientEmail)
+        .then(() => {
+          App.toast.show('Sinh lịch thi đấu thành công và đã gửi thông báo Email!', 'success');
+          App.router.navigateTo('schedule', { tournamentId: currentManageTournament.tournament_id });
+        })
+        .catch(err => App.toast.show('Lỗi sinh lịch: ' + err.message, 'error'));
+    });
+  }
+
+  function assignRefereeRole(tournamentId) {
+    const emailInput = document.getElementById('referee-email-input');
+    const targetEmail = emailInput ? emailInput.value.trim() : '';
+
+    if (!targetEmail) {
+      App.toast.show('Vui lòng nhập Email của Trọng tài.', 'error');
+      return;
+    }
+
+    const clientEmail = App.state.user.email || localStorage.getItem('user_email') || '';
+    App.server.call('apiAssignRole', tournamentId, targetEmail, 'referee', clientEmail)
+      .then(() => {
+        App.toast.show(`Đã gán vai trò Referee cho ${targetEmail}!`, 'success');
+        emailInput.value = '';
+        loadAssignedReferees(tournamentId);
+      })
+      .catch(err => App.toast.show('Lỗi gán vai trò: ' + err.message, 'error'));
+  }
+
+  function revokeRefereeRole(tournamentId, targetEmail) {
+    const clientEmail = App.state.user.email || localStorage.getItem('user_email') || '';
+    App.modal.open('Thu Hồi Quyền Trọng Tài', `Bạn có chắc chắn muốn thu hồi quyền Trọng tài của email <strong>${targetEmail}</strong>?`, () => {
+      App.server.call('apiRevokeRole', tournamentId, targetEmail, 'referee', clientEmail)
+        .then(res => {
+          App.toast.show(res.message || 'Đã thu hồi quyền Trọng tài!', 'info');
+          loadAssignedReferees(tournamentId);
+        })
+        .catch(err => App.toast.show('Lỗi thu hồi quyền: ' + err.message, 'error'));
+    });
+  }
+
+  function deleteCurrentTournament(tournamentId) {
+    const clientEmail = App.state.user.email || localStorage.getItem('user_email') || '';
+    App.modal.open('Xóa Giải Đấu', 'Bạn có chắc chắn muốn xóa giải đấu này khỏi hệ thống?', () => {
+      App.server.call('apiDeleteTournament', tournamentId, clientEmail)
+        .then(() => {
+          App.toast.show('Đã xóa giải đấu!', 'info');
+          App.router.navigateTo('dashboard');
+        })
+        .catch(err => App.toast.show('Lỗi xóa giải: ' + err.message, 'error'));
+    });
+  }
+</script>

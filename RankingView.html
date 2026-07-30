@@ -1,0 +1,174 @@
+<script>
+  /**
+   * Standings & Ranking View Controller
+   */
+  App.views.ranking = function(params = {}) {
+    const container = document.getElementById('app-view');
+    const selectedTournamentId = params.tournamentId || '';
+
+    container.innerHTML = `
+      <div>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5rem; flex-wrap:wrap; gap:1rem;">
+          <h2>📊 Bảng Xếp Hạng & Điểm Số</h2>
+          
+          <button class="btn btn-secondary btn-sm" onclick="App.router.navigateTo('schedule', { tournamentId: selectedRankingTournamentId })">📅 Xem Lịch Thi Đấu</button>
+        </div>
+
+        <!-- Filters -->
+        <div class="card" style="margin-bottom:1.5rem;">
+          <div class="grid-2">
+            <div class="form-group">
+              <label class="form-label">Chọn Giải Đấu</label>
+              <select class="form-control" id="rank-tournament-select" onchange="onRankingTournamentChange()">
+                <option value="">-- Chọn Giải Đấu --</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Chọn Môn Thi Đấu</label>
+              <select class="form-control" id="rank-ts-select" onchange="onRankingTsChange()">
+                <option value="">-- Chọn Môn Thi Đấu --</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- Rankings Table Panel -->
+        <div id="rankings-table-container">
+          <div class="loader-center"><div class="spinner"></div><p>Vui lòng chọn giải đấu và môn thi đấu.</p></div>
+        </div>
+      </div>
+    `;
+
+    loadRankingTournaments(selectedTournamentId);
+  };
+
+  let selectedRankingTournamentId = '';
+  let selectedRankingTsId = '';
+
+  function loadRankingTournaments(presetTId) {
+    App.server.call('apiGetTournamentList')
+      .then(list => {
+        const select = document.getElementById('rank-tournament-select');
+        if (!select) return;
+
+        select.innerHTML = `<option value="">-- Chọn Giải Đấu --</option>` + 
+          (list || []).map(t => `<option value="${t.tournament_id}" ${t.tournament_id === presetTId ? 'selected' : ''}>${t.name}</option>`).join('');
+
+        if (presetTId) {
+          onRankingTournamentChange();
+        } else if (list && list.length > 0) {
+          select.value = list[0].tournament_id;
+          onRankingTournamentChange();
+        }
+      });
+  }
+
+  function onRankingTournamentChange() {
+    selectedRankingTournamentId = document.getElementById('rank-tournament-select').value;
+    const tsSelect = document.getElementById('rank-ts-select');
+    tsSelect.innerHTML = `<option value="">-- Chọn Môn Thi Đấu --</option>`;
+
+    if (!selectedRankingTournamentId) return;
+
+    App.server.call('apiGetTournamentById', selectedRankingTournamentId)
+      .then(t => {
+        if (!t || !t.sports || t.sports.length === 0) return;
+        
+        tsSelect.innerHTML = t.sports.map(s => `<option value="${s.ts_id}">${s.sport_name}</option>`).join('');
+        selectedRankingTsId = t.sports[0].ts_id;
+        onRankingTsChange();
+      });
+  }
+
+  function onRankingTsChange() {
+    selectedRankingTsId = document.getElementById('rank-ts-select').value;
+    const container = document.getElementById('rankings-table-container');
+    if (!selectedRankingTsId || !container) return;
+
+    container.innerHTML = `<div class="loader-center"><div class="spinner"></div><p>Đang tính toán bảng xếp hạng...</p></div>`;
+
+    App.server.call('apiGetRankingsByTournamentSport', selectedRankingTsId)
+      .then(rankings => {
+        renderRankingsTable(rankings || []);
+      })
+      .catch(err => {
+        container.innerHTML = `<div class="card"><p style="color:var(--danger);">Lỗi tính bảng xếp hạng: ${err.message}</p></div>`;
+      });
+  }
+
+  function renderRankingsTable(rankings) {
+    const container = document.getElementById('rankings-table-container');
+    if (!container) return;
+
+    if (rankings.length === 0) {
+      container.innerHTML = `
+        <div class="card" style="text-align:center; padding:3rem;">
+          <p style="color:var(--text-muted); font-size:1.1rem;">Chưa có dữ liệu xếp hạng cho môn này.</p>
+        </div>
+      `;
+      return;
+    }
+
+    const rankBadges = {
+      1: '🥇 1',
+      2: '🥈 2',
+      3: '🥉 3'
+    };
+
+    container.innerHTML = `
+      <div class="card">
+        <div class="table-container">
+          <table class="table">
+            <thead>
+              <tr>
+                <th style="width:70px; text-align:center;">#</th>
+                <th>Tên Đội</th>
+                <th style="text-align:center;">ST</th>
+                <th style="text-align:center;">T</th>
+                <th style="text-align:center;">H</th>
+                <th style="text-align:center;">B</th>
+                <th style="text-align:center;">BT</th>
+                <th style="text-align:center;">BB</th>
+                <th style="text-align:center;">HS</th>
+                <th style="text-align:center; font-size:1rem; color:var(--primary);">Điểm</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rankings.map(r => `
+                <tr style="${r.rank <= 3 ? 'background:rgba(99,102,241,0.05); font-weight:600;' : ''}">
+                  <td style="text-align:center; font-weight:800; font-size:1rem;">
+                    ${rankBadges[r.rank] || r.rank}
+                  </td>
+                  <td><strong>${r.team_name}</strong></td>
+                  <td style="text-align:center;">${r.played}</td>
+                  <td style="text-align:center; color:var(--secondary);">${r.won}</td>
+                  <td style="text-align:center; color:var(--accent);">${r.drawn}</td>
+                  <td style="text-align:center; color:var(--danger);">${r.lost}</td>
+                  <td style="text-align:center;">${r.goals_for}</td>
+                  <td style="text-align:center;">${r.goals_against}</td>
+                  <td style="text-align:center; font-weight:700; color:${r.goal_difference > 0 ? 'var(--secondary)' : (r.goal_difference < 0 ? 'var(--danger)' : 'var(--text-muted)')};">
+                    ${r.goal_difference > 0 ? '+' + r.goal_difference : r.goal_difference}
+                  </td>
+                  <td style="text-align:center; font-size:1.15rem; font-weight:800; color:var(--primary);">
+                    ${r.points}
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+        
+        <div style="margin-top:1.25rem; font-size:0.8rem; color:var(--text-dim); display:flex; gap:1.5rem; flex-wrap:wrap;">
+          <span><strong>ST:</strong> Số trận đã đấu</span>
+          <span><strong>T:</strong> Thắng</span>
+          <span><strong>H:</strong> Hòa</span>
+          <span><strong>B:</strong> Thua</span>
+          <span><strong>BT:</strong> Bàn thắng</span>
+          <span><strong>BB:</strong> Bàn thua</span>
+          <span><strong>HS:</strong> Hiệu số</span>
+        </div>
+      </div>
+    `;
+  }
+</script>

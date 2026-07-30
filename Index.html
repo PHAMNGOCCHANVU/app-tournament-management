@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Quản lý Giải đấu Thể thao</title>
+  <!-- Google Identity Services SDK -->
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <?!= include('Styles'); ?>
+</head>
+<body>
+
+  <!-- Navigation Bar -->
+  <nav class="navbar">
+    <div class="navbar-inner">
+      <div class="brand-logo" onclick="App.router.navigateTo('dashboard')">
+        <div class="brand-logo-icon">🏆</div>
+        <span>SportTournament</span>
+      </div>
+
+      <ul class="nav-links">
+        <li class="nav-item active" data-page="dashboard" onclick="App.router.navigateTo('dashboard')">
+          Trang chủ
+        </li>
+        <li class="nav-item" data-page="tournament_create" onclick="App.router.navigateTo('tournament_create')">
+          + Tạo giải đấu
+        </li>
+        <li class="nav-item" data-page="team_register" onclick="App.router.navigateTo('team_register')">
+          Đăng ký đội
+        </li>
+        <li class="nav-item" data-page="schedule" onclick="App.router.navigateTo('schedule')">
+          Lịch thi đấu
+        </li>
+        <li class="nav-item" data-page="ranking" onclick="App.router.navigateTo('ranking')">
+          Bảng xếp hạng
+        </li>
+        <li class="nav-item" data-page="profile" onclick="App.router.navigateTo('profile')">
+          Cá nhân
+        </li>
+      </ul>
+
+      <div class="nav-user" id="nav-user-container">
+        <span>Đang kiểm tra tài khoản...</span>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Main View Container -->
+  <main class="app-container">
+    <div id="app-view">
+      <div class="loader-center">
+        <div class="spinner"></div>
+        <p>Đang tải ứng dụng...</p>
+      </div>
+    </div>
+  </main>
+
+  <!-- Global Initial Parameters passed from server -->
+  <script>
+    window.INITIAL_PAGE = "<?= initialPage ?>";
+    window.INITIAL_TOURNAMENT_ID = "<?= tournamentId ?>";
+  </script>
+
+  <!-- Include Core Scripts Engine -->
+  <?!= include('Scripts'); ?>
+
+  <!-- Include Page Partial View Controllers -->
+  <?!= include('Dashboard'); ?>
+  <?!= include('TournamentCreate'); ?>
+  <?!= include('TournamentManage'); ?>
+  <?!= include('TeamRegister'); ?>
+  <?!= include('Schedule'); ?>
+  <?!= include('MatchResult'); ?>
+  <?!= include('RankingView'); ?>
+  <?!= include('BracketView'); ?>
+  <?!= include('Profile'); ?>
+
+</body>
+</html>

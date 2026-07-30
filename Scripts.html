@@ -1,0 +1,346 @@
+<script>
+  /**
+   * Client Application State & Single Page Application (SPA) Engine
+   */
+  const App = {
+    state: {
+      user: { email: '', name: '', picture: '', role: 'viewer', isSuperAdmin: false, isLoggedIn: false },
+      currentPage: 'dashboard',
+      params: {}
+    },
+
+    /**
+     * Promise Wrapper around Apps Script google.script.run API
+     */
+    server: {
+      call: function (functionName, ...args) {
+        return new Promise((resolve, reject) => {
+          if (typeof google === 'undefined' || !google.script || !google.script.run) {
+            console.warn('google.script.run is unavailable. Operating in offline/test mode.');
+            reject(new Error('Môi trường Apps Script không khả dụng.'));
+            return;
+          }
+
+          google.script.run
+            .withSuccessHandler(response => resolve(response))
+            .withFailureHandler(err => reject(err))
+            [functionName](...args);
+        });
+      }
+    },
+
+    /**
+     * SPA Router
+     */
+    router: {
+      navigateTo: function (pageName, params = {}) {
+        App.state.currentPage = pageName;
+        App.state.params = params;
+
+        // Update active nav items
+        document.querySelectorAll('.nav-item').forEach(el => {
+          if (el.dataset.page === pageName) el.classList.add('active');
+          else el.classList.remove('active');
+        });
+
+        const clientEmail = App.state.user.email || localStorage.getItem('user_email') || '';
+
+        // Re-check auth role context if tournamentId is present in params
+        if (params && params.tournamentId) {
+          App.server.call('apiGetAuthContext', params.tournamentId, clientEmail)
+            .then(res => {
+              if (res) {
+                App.state.user = Object.assign({}, App.state.user, res);
+                App.updateUserBadge();
+              }
+            });
+        }
+
+        const container = document.getElementById('app-view');
+        if (!container) return;
+
+        container.innerHTML = `
+          <div class="loader-center">
+            <div class="spinner"></div>
+            <p>Đang tải dữ liệu...</p>
+          </div>
+        `;
+
+        // Render target view template
+        setTimeout(() => {
+          if (typeof App.views[pageName] === 'function') {
+            App.views[pageName](params);
+          } else {
+            container.innerHTML = `
+              <div class="card" style="text-align:center; padding:3rem;">
+                <h2>Trang không tồn tại</h2>
+                <p style="color:var(--text-muted); margin-top:0.5rem;">Không tìm thấy view [${pageName}]</p>
+                <button class="btn btn-primary" style="margin-top:1.5rem;" onclick="App.router.navigateTo('dashboard')">Về Trang chủ</button>
+              </div>
+            `;
+          }
+        }, 100);
+      }
+    },
+
+    /**
+     * Views Handler Registry
+     */
+    views: {},
+
+    /**
+     * Toast Notifications Engine
+     */
+    toast: {
+      show: function (message, type = 'info') {
+        let container = document.getElementById('toast-container');
+        if (!container) {
+          container = document.createElement('div');
+          container.id = 'toast-container';
+          container.className = 'toast-container';
+          document.body.appendChild(container);
+        }
+
+        const toast = document.createElement('div');
+        toast.className = `toast toast-${type}`;
+        toast.innerHTML = `<div>${message}</div>`;
+        container.appendChild(toast);
+
+        setTimeout(() => {
+          toast.style.opacity = '0';
+          toast.style.transform = 'translateX(100%)';
+          setTimeout(() => toast.remove(), 300);
+        }, 4000);
+      }
+    },
+
+    /**
+     * Modal Dialog Handler
+     */
+    modal: {
+      open: function (title, bodyHtml, onConfirm = null) {
+        let overlay = document.getElementById('global-modal');
+        if (!overlay) {
+          overlay = document.createElement('div');
+          overlay.id = 'global-modal';
+          overlay.className = 'modal-overlay';
+          overlay.innerHTML = `
+            <div class="modal-box">
+              <h3 id="modal-title" style="margin-bottom:1rem;"></h3>
+              <div id="modal-body"></div>
+              <div style="display:flex; justify-content:flex-end; gap:0.75rem; margin-top:1.5rem;">
+                <button class="btn btn-secondary" onclick="App.modal.close()">Hủy</button>
+                <button class="btn btn-primary" id="modal-confirm-btn">Xác nhận</button>
+              </div>
+            </div>
+          `;
+          document.body.appendChild(overlay);
+        }
+
+        document.getElementById('modal-title').innerText = title;
+        document.getElementById('modal-body').innerHTML = bodyHtml;
+
+        const confirmBtn = document.getElementById('modal-confirm-btn');
+        if (onConfirm) {
+          confirmBtn.style.display = 'inline-flex';
+          confirmBtn.onclick = () => {
+            onConfirm();
+            App.modal.close();
+          };
+        } else {
+          confirmBtn.style.display = 'none';
+        }
+
+        setTimeout(() => overlay.classList.add('active'), 10);
+      },
+      close: function () {
+        const overlay = document.getElementById('global-modal');
+        if (overlay) {
+          overlay.classList.remove('active');
+        }
+      }
+    },
+
+    /**
+     * Identity Check Helper
+     */
+    ensureIdentity: function (callback) {
+      const email = App.state.user.email || localStorage.getItem('user_email') || '';
+      if (!email) {
+        App.promptSetEmail(callback);
+      } else {
+        if (callback) callback(email);
+      }
+    },
+
+    /**
+     * App Initialization
+     */
+    init: function () {
+      const savedEmail = localStorage.getItem('user_email') || '';
+
+      // Fetch user authentication context
+      App.server.call('apiGetAuthContext', App.state.params.tournamentId || '', savedEmail)
+        .then(res => {
+          if (res) {
+            App.state.user = Object.assign({}, App.state.user, res);
+            if (res.email) {
+              localStorage.setItem('user_email', res.email);
+            }
+            App.updateUserBadge();
+          }
+        })
+        .catch(err => console.log('Auth check error:', err));
+
+      // Initial route loading
+      const initialPage = window.INITIAL_PAGE || 'dashboard';
+      const tournamentId = window.INITIAL_TOURNAMENT_ID || '';
+      App.router.navigateTo(initialPage, { tournamentId });
+    },
+
+    /**
+     * Update Navbar User Badge & Avatar
+     */
+    updateUserBadge: function () {
+      const userEl = document.getElementById('nav-user-container');
+      if (!userEl) return;
+
+      const displayEmail = App.state.user.email || localStorage.getItem('user_email') || '';
+      const picture = App.state.user.picture || '';
+
+      if (displayEmail) {
+        const roleLabel = App.state.user.isSuperAdmin ? 'SUPER ADMIN' : (App.state.user.role || 'viewer');
+        
+        userEl.innerHTML = `
+          <div style="display:flex; align-items:center; gap:0.5rem;">
+            ${picture ? `<img src="${picture}" style="width:28px; height:28px; border-radius:50%; border:1px solid var(--primary);" />` : '👤'}
+            <span title="Bấm để đổi tài khoản" style="cursor:pointer; font-weight:600;" onclick="App.promptSetEmail()">${displayEmail}</span>
+            <span class="user-badge" style="${App.state.user.isSuperAdmin ? 'background:linear-gradient(135deg,#f59e0b,#ef4444); color:#fff;' : ''}">${roleLabel}</span>
+            <button class="btn btn-sm btn-secondary" style="padding:0.2rem 0.5rem; font-size:0.75rem; margin-left:0.25rem;" onclick="App.logout()" title="Đăng xuất khỏi thiết bị">🚪 Đăng xuất</button>
+          </div>
+        `;
+      } else {
+        userEl.innerHTML = `
+          <button class="btn btn-sm btn-primary" onclick="App.promptSetEmail()">🔑 Đăng nhập Google</button>
+          <span class="user-badge" style="background:rgba(255,255,255,0.1); color:#fff;">Viewer</span>
+        `;
+      }
+    },
+
+    /**
+     * Google Sign-In & Email Identity Prompt
+     */
+    promptSetEmail: function (callbackOnSuccess = null) {
+      const current = App.state.user.email || localStorage.getItem('user_email') || '';
+      App.modal.open(
+        '🔑 Đăng Nhập & Xác Nhận Tài Khoản Google',
+        `
+          <div class="form-group">
+            <label class="form-label">Nhập địa chỉ Email Google của bạn *</label>
+            <input type="email" class="form-control" id="modal-user-email-input" value="${current}" placeholder="ví dụ: nguyenvana@gmail.com" required>
+            <small style="color:var(--text-muted); display:block; margin-top:0.5rem;">
+              Do Google ẩn email phiên làm việc, ứng dụng dùng Email này để xác định quyền <strong>Người tạo giải (Organizer)</strong>, <strong>Trọng tài (Referee)</strong> hay <strong>VĐV</strong>.
+            </small>
+          </div>
+        `,
+        () => {
+          const newEmail = (document.getElementById('modal-user-email-input').value || '').trim().toLowerCase();
+          if (newEmail) {
+            localStorage.setItem('user_email', newEmail);
+            App.state.user.email = newEmail;
+            App.server.call('apiGetAuthContext', App.state.params.tournamentId || '', newEmail)
+              .then(res => {
+                if (res) App.state.user = Object.assign({}, App.state.user, res);
+                App.updateUserBadge();
+                App.toast.show(`Đã đăng nhập tài khoản: ${newEmail}`, 'success');
+                if (callbackOnSuccess) callbackOnSuccess(newEmail);
+                App.router.navigateTo(App.state.currentPage, App.state.params);
+              });
+          } else {
+            App.toast.show('Vui lòng nhập địa chỉ email hợp lệ.', 'error');
+          }
+        }
+      );
+    },
+
+    /**
+     * Logout Action (Clears session & returns to Guest Viewer)
+     */
+    logout: function () {
+      localStorage.removeItem('user_email');
+      App.state.user = { email: '', name: '', picture: '', role: 'viewer', isSuperAdmin: false, isLoggedIn: false };
+      App.updateUserBadge();
+      App.toast.show('Đã đăng xuất khỏi tài khoản trên thiết bị này.', 'info');
+      App.router.navigateTo('dashboard');
+    }
+  };
+
+  /**
+   * Helper: Parse Google Credential JWT Token (if GIS SDK response is received)
+   */
+  function parseJwt(token) {
+    try {
+      const base64Url = token.split('.')[1];
+      const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+      const jsonPayload = decodeURIComponent(atob(base64).split('').map(function(c) {
+        return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+      }).join(''));
+      return JSON.parse(jsonPayload);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /**
+   * Callback invoked by Google Identity Services SDK
+   */
+  function handleGoogleCredentialResponse(response) {
+    if (response && response.credential) {
+      const payload = parseJwt(response.credential);
+      if (payload && payload.email) {
+        const email = payload.email.toLowerCase().trim();
+        localStorage.setItem('user_email', email);
+        App.state.user.email = email;
+        App.state.user.name = payload.name || '';
+        App.state.user.picture = payload.picture || '';
+
+        App.server.call('apiGetAuthContext', App.state.params.tournamentId || '', email)
+          .then(res => {
+            if (res) App.state.user = Object.assign({}, App.state.user, res);
+            App.updateUserBadge();
+            App.toast.show(`Chào mừng ${payload.name || email}!`, 'success');
+            App.router.navigateTo(App.state.currentPage, App.state.params);
+          });
+      }
+    }
+  }
+
+  /**
+   * Global Client-side Date Formatting Helper
+   */
+  window.formatDate = function formatDate(dateString) {
+    if (!dateString) return '';
+    try {
+      const d = new Date(dateString);
+      if (isNaN(d.getTime())) return dateString;
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      const hours = String(d.getHours()).padStart(2, '0');
+      const mins = String(d.getMinutes()).padStart(2, '0');
+
+      if (hours === '00' && mins === '00') {
+        return `${day}/${month}/${year}`;
+      }
+      return `${day}/${month}/${year} ${hours}:${mins}`;
+    } catch (e) {
+      return dateString;
+    }
+  };
+
+  var formatDate = window.formatDate;
+
+  document.addEventListener('DOMContentLoaded', () => {
+    App.init();
+  });
+</script>

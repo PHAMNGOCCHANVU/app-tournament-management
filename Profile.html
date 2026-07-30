@@ -1,0 +1,113 @@
+<script>
+  /**
+   * User Profile & Personal Dashboard View Controller
+   */
+  App.views.profile = function(params = {}) {
+    const container = document.getElementById('app-view');
+
+    container.innerHTML = `
+      <div style="max-width: 800px; margin: 0 auto;">
+        <h2 style="margin-bottom:1.5rem;">👤 Trang Cá Nhân & Quản Lý</h2>
+
+        <!-- User Info Card -->
+        <div class="card" style="margin-bottom:1.5rem;">
+          <div style="display:flex; align-items:center; gap:1.25rem;">
+            <div style="width:64px; height:64px; background:linear-gradient(135deg, var(--primary), var(--secondary)); border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:2rem;">
+              👤
+            </div>
+            <div>
+              <h3 style="margin-bottom:0.25rem;">${App.state.user.email || 'Người dùng chưa đăng nhập'}</h3>
+              <p style="color:var(--text-muted); font-size:0.9rem;">
+                Vai trò hệ thống mặc định: <span class="user-badge">${App.state.user.role}</span>
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <!-- System Administration Tools -->
+        <div class="card" style="margin-bottom:1.5rem;">
+          <h3 style="margin-bottom:0.75rem; color:var(--accent);">⚙️ Khởi Tạo / Cấu Hình Hệ Thống</h3>
+          <p style="color:var(--text-muted); font-size:0.9rem; margin-bottom:1.25rem;">
+            Nếu bạn là Quản trị viên khởi tạo ứng dụng lần đầu trên Google Sheets, nhấn nút dưới đây để tạo tự động 9 sheet cơ sở dữ liệu và dữ liệu mẫu môn thể thao.
+          </p>
+
+          <button class="btn btn-secondary" onclick="triggerDatabaseSetup()">
+            🔄 Khởi tạo / Đồng bộ Cấu trúc Google Sheets
+          </button>
+        </div>
+
+        <!-- My Tournaments & Teams List Container -->
+        <div id="my-activities-container">
+          <div class="loader-center"><div class="spinner"></div><p>Đang tải hoạt động của bạn...</p></div>
+        </div>
+      </div>
+    `;
+
+    loadMyProfileActivities();
+  };
+
+  function loadMyProfileActivities() {
+    const container = document.getElementById('my-activities-container');
+    if (!container) return;
+
+    if (!App.state.user.isLoggedIn) {
+      container.innerHTML = `
+        <div class="card" style="text-align:center; padding:2rem;">
+          <p style="color:var(--text-muted);">Vui lòng mở ứng dụng trong tài khoản Google để xem lịch sử hoạt động.</p>
+        </div>
+      `;
+      return;
+    }
+
+    App.server.call('apiGetTournamentList')
+      .then(tournaments => {
+        const myOrganized = (tournaments || []).filter(t => 
+          String(t.organizer_email).toLowerCase() === App.state.user.email.toLowerCase()
+        );
+
+        container.innerHTML = `
+          <div class="card">
+            <h3 style="margin-bottom:1rem; color:var(--primary);">Giải Đấu Do Bạn Tổ Chức (${myOrganized.length})</h3>
+            
+            ${myOrganized.length === 0 ? '<p style="color:var(--text-muted);">Bạn chưa tạo giải đấu nào.</p>' : ''}
+
+            <div class="table-container">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th>Tên Giải</th>
+                    <th>Địa Điểm</th>
+                    <th>Trạng Thái</th>
+                    <th>Thao Tác</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${myOrganized.map(t => `
+                    <tr>
+                      <td><strong>${t.name}</strong></td>
+                      <td>${t.location}</td>
+                      <td><span class="badge badge-${t.status}">${t.status}</span></td>
+                      <td>
+                        <button class="btn btn-sm btn-success" onclick="App.router.navigateTo('tournament_manage', { tournamentId: '${t.tournament_id}' })">⚙️ Quản lý</button>
+                      </td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        `;
+      })
+      .catch(err => {
+        container.innerHTML = `<div class="card"><p style="color:var(--danger);">Lỗi: ${err.message}</p></div>`;
+      });
+  }
+
+  function triggerDatabaseSetup() {
+    App.server.call('apiSetupDatabase')
+      .then(res => {
+        App.toast.show(res.message || 'Đồng bộ Google Sheets thành công!', 'success');
+      })
+      .catch(err => App.toast.show('Lỗi khởi tạo: ' + err.message, 'error'));
+  }
+</script>

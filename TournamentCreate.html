@@ -1,0 +1,198 @@
+<script>
+  /**
+   * Tournament Create View Controller
+   */
+  App.views.tournament_create = function (params = {}) {
+    const container = document.getElementById('app-view');
+    const currentUserEmail = App.state.user.email || '';
+
+    container.innerHTML = `
+      <div style="max-width: 800px; margin: 0 auto;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5rem;">
+          <h2>🏆 Tạo Giải Đấu Thể Thao Mới</h2>
+          <button class="btn btn-secondary btn-sm" onclick="App.router.navigateTo('dashboard')">← Quay lại</button>
+        </div>
+
+        <form id="create-tournament-form" onsubmit="handleCreateTournament(event)">
+          <!-- Section 1: Tournament Basic Info -->
+          <div class="card" style="margin-bottom: 1.5rem;">
+            <h3 style="margin-bottom: 1rem; border-bottom: 1px solid var(--border); padding-bottom: 0.5rem; color: var(--primary);">1. Thông tin chung</h3>
+            
+            <div class="form-group">
+              <label class="form-label">Tên giải đấu *</label>
+              <input type="text" class="form-control" id="t-name" required placeholder="Ví dụ: Giải Bóng Đá Công Đoàn 2026">
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Email Người tổ chức / Trưởng Ban tổ chức *</label>
+              <input type="email" class="form-control" id="t-organizer-email" required value="${currentUserEmail}" placeholder="organizer@gmail.com">
+              <small style="color:var(--text-muted);">Tài khoản email này sẽ giữ quyền Quản trị (Organizer) cao nhất của giải đấu.</small>
+            </div>
+
+            <div class="grid-2">
+              <div class="form-group">
+                <label class="form-label">Ngày bắt đầu *</label>
+                <input type="date" class="form-control" id="t-start-date" required>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Ngày kết thúc *</label>
+                <input type="date" class="form-control" id="t-end-date" required>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Địa điểm tổ chức *</label>
+              <input type="text" class="form-control" id="t-location" required placeholder="Ví dụ: Sân thể thao Trường Đại học A">
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Mô tả giải đấu</label>
+              <textarea class="form-control" id="t-description" rows="3" placeholder="Nhập quy định chung, giải thưởng hoặc thông tin liên hệ..."></textarea>
+            </div>
+          </div>
+
+          <!-- Section 2: Sport Configuration -->
+          <div class="card" style="margin-bottom: 1.5rem;">
+            <h3 style="margin-bottom: 1rem; border-bottom: 1px solid var(--border); padding-bottom: 0.5rem; color: var(--secondary);">2. Chọn môn thể thao & Cấu hình thể thức</h3>
+
+            <div id="sports-selector-container">
+              <div class="loader-center"><div class="spinner"></div><p>Đang tải danh mục môn thể thao...</p></div>
+            </div>
+          </div>
+
+          <div style="display:flex; justify-content:flex-end; gap:1rem;">
+            <button type="button" class="btn btn-secondary" onclick="App.router.navigateTo('dashboard')">Hủy</button>
+            <button type="submit" class="btn btn-primary" id="btn-submit-tournament">🚀 Khởi Tạo Giải Đấu</button>
+          </div>
+        </form>
+      </div>
+    `;
+
+    loadSportsForCreation();
+  };
+
+  let systemSportsList = [];
+
+  function loadSportsForCreation() {
+    App.server.call('apiGetAllSports')
+      .then(sports => {
+        systemSportsList = sports || [];
+        renderSportsSelector(systemSportsList);
+      })
+      .catch(err => {
+        App.toast.show('Lỗi tải danh mục môn: ' + err.message, 'error');
+      });
+  }
+
+  function renderSportsSelector(sports) {
+    const container = document.getElementById('sports-selector-container');
+    if (!container) return;
+
+    container.innerHTML = sports.map((s, idx) => `
+      <div class="card" style="background: rgba(15,23,42,0.4); margin-bottom: 1rem; border-color: var(--border);">
+        <div style="display:flex; align-items:center; gap:0.75rem; margin-bottom:0.75rem;">
+          <input type="checkbox" class="sport-enable-checkbox" id="sport-check-${s.sport_id}" data-sport-id="${s.sport_id}" style="width:18px; height:18px; cursor:pointer;" onchange="toggleSportConfig('${s.sport_id}')">
+          <label for="sport-check-${s.sport_id}" style="font-weight:700; font-size:1.1rem; cursor:pointer; color:#fff;">${s.name}</label>
+          <span class="badge badge-draft" style="font-size:0.7rem;">${s.type}</span>
+        </div>
+
+        <div id="sport-config-panel-${s.sport_id}" style="display:none; padding-top:0.75rem; border-top:1px solid var(--border);">
+          <div class="grid-2">
+            <div class="form-group">
+              <label class="form-label">Thể thức thi đấu</label>
+              <select class="form-control" id="fmt-${s.sport_id}">
+                <option value="round_robin">Vòng tròn (Round Robin)</option>
+                <option value="single_elimination">Loại trực tiếp (Single Elimination)</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Hạn chót đăng ký</label>
+              <input type="date" class="form-control" id="deadline-${s.sport_id}">
+            </div>
+          </div>
+
+          <div class="grid-4">
+            <div class="form-group">
+              <label class="form-label">Số đội tối đa</label>
+              <input type="number" class="form-control" id="max-${s.sport_id}" value="8" min="2">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Số đội tối thiểu</label>
+              <input type="number" class="form-control" id="min-${s.sport_id}" value="2" min="2">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Điểm Thắng</label>
+              <input type="number" class="form-control" id="win-pts-${s.sport_id}" value="3">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Điểm Hòa</label>
+              <input type="number" class="form-control" id="draw-pts-${s.sport_id}" value="1">
+            </div>
+          </div>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  function toggleSportConfig(sportId) {
+    const check = document.getElementById(`sport-check-${sportId}`);
+    const panel = document.getElementById(`sport-config-panel-${sportId}`);
+    if (check && panel) {
+      panel.style.display = check.checked ? 'block' : 'none';
+    }
+  }
+
+  function handleCreateTournament(event) {
+    event.preventDefault();
+
+    const submitBtn = document.getElementById('btn-submit-tournament');
+    submitBtn.disabled = true;
+    submitBtn.innerText = '⏳ Đang tạo...';
+
+    // Collect checked sports
+    const selectedSports = [];
+    document.querySelectorAll('.sport-enable-checkbox:checked').forEach(cb => {
+      const sportId = cb.dataset.sportId;
+      selectedSports.push({
+        sport_id: sportId,
+        format: document.getElementById(`fmt-${sportId}`).value,
+        registration_deadline: document.getElementById(`deadline-${sportId}`).value,
+        max_teams: document.getElementById(`max-${sportId}`).value,
+        min_teams: document.getElementById(`min-${sportId}`).value,
+        points_for_win: document.getElementById(`win-pts-${sportId}`).value,
+        points_for_draw: document.getElementById(`draw-pts-${sportId}`).value,
+        points_for_loss: 0
+      });
+    });
+
+    if (selectedSports.length === 0) {
+      App.toast.show('Vui lòng chọn ít nhất 1 môn thể thao cho giải đấu.', 'error');
+      submitBtn.disabled = false;
+      submitBtn.innerText = '🚀 Khởi Tạo Giải Đấu';
+      return;
+    }
+
+    const payload = {
+      name: document.getElementById('t-name').value,
+      organizer_email: document.getElementById('t-organizer-email').value,
+      start_date: document.getElementById('t-start-date').value,
+      end_date: document.getElementById('t-end-date').value,
+      location: document.getElementById('t-location').value,
+      description: document.getElementById('t-description').value,
+      sports: selectedSports
+    };
+
+    App.server.call('apiCreateTournament', payload)
+      .then(res => {
+        App.toast.show('Tạo giải đấu thành công!', 'success');
+        App.router.navigateTo('tournament_manage', { tournamentId: res.tournament_id });
+      })
+      .catch(err => {
+        App.toast.show('Lỗi khi tạo giải đấu: ' + err.message, 'error');
+        submitBtn.disabled = false;
+        submitBtn.innerText = '🚀 Khởi Tạo Giải Đấu';
+      });
+  }
+</script>

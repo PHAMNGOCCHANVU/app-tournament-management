@@ -1,0 +1,194 @@
+<script>
+  /**
+   * Schedule & Match List View Controller
+   */
+  App.views.schedule = function(params = {}) {
+    const container = document.getElementById('app-view');
+    const selectedTournamentId = params.tournamentId || '';
+
+    container.innerHTML = `
+      <div>
+        <!-- View Title & Links -->
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5rem; flex-wrap:wrap; gap:1rem;">
+          <h2>📅 Lịch Thi Đấu & Kết Quả Trận Đấu</h2>
+          
+          <div style="display:flex; gap:0.5rem;" id="schedule-quick-links">
+            <button class="btn btn-secondary btn-sm" onclick="App.router.navigateTo('ranking', { tournamentId: selectedScheduleTournamentId, tsId: selectedScheduleTsId })">📊 Bảng Xếp Hạng</button>
+            <button class="btn btn-secondary btn-sm" onclick="App.router.navigateTo('bracket', { tournamentId: selectedScheduleTournamentId, tsId: selectedScheduleTsId })">🌿 Cây Nhánh Đấu</button>
+          </div>
+        </div>
+
+        <!-- Select Tournament & Sport Filters -->
+        <div class="card" style="margin-bottom:1.5rem;">
+          <div class="grid-2">
+            <div class="form-group">
+              <label class="form-label">Chọn Giải Đấu</label>
+              <select class="form-control" id="sched-tournament-select" onchange="onScheduleTournamentChange()">
+                <option value="">-- Chọn Giải Đấu --</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Chọn Môn Thi Đấu</label>
+              <select class="form-control" id="sched-ts-select" onchange="onScheduleTsChange()">
+                <option value="">-- Chọn Môn Thi Đấu --</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- Matches Table List -->
+        <div id="schedule-matches-container">
+          <div class="loader-center"><div class="spinner"></div><p>Vui lòng chọn giải đấu và môn thi đấu để xem lịch.</p></div>
+        </div>
+      </div>
+    `;
+
+    loadScheduleTournaments(selectedTournamentId);
+  };
+
+  let selectedScheduleTournamentId = '';
+  let selectedScheduleTsId = '';
+  let currentTournamentDetails = null;
+
+  function loadScheduleTournaments(presetTId) {
+    App.server.call('apiGetTournamentList')
+      .then(list => {
+        const select = document.getElementById('sched-tournament-select');
+        if (!select) return;
+
+        select.innerHTML = `<option value="">-- Chọn Giải Đấu --</option>` + 
+          (list || []).map(t => `<option value="${t.tournament_id}" ${t.tournament_id === presetTId ? 'selected' : ''}>${t.name}</option>`).join('');
+
+        if (presetTId) {
+          onScheduleTournamentChange();
+        } else if (list && list.length > 0) {
+          select.value = list[0].tournament_id;
+          onScheduleTournamentChange();
+        }
+      });
+  }
+
+  function onScheduleTournamentChange() {
+    selectedScheduleTournamentId = document.getElementById('sched-tournament-select').value;
+    const tsSelect = document.getElementById('sched-ts-select');
+    tsSelect.innerHTML = `<option value="">-- Chọn Môn Thi Đấu --</option>`;
+
+    if (!selectedScheduleTournamentId) return;
+
+    const clientEmail = App.state.user.email || localStorage.getItem('user_email') || '';
+
+    // Refresh role context for the selected tournament
+    App.server.call('apiGetAuthContext', selectedScheduleTournamentId, clientEmail)
+      .then(res => {
+        if (res) {
+          App.state.user = res;
+          App.updateUserBadge();
+        }
+      });
+
+    App.server.call('apiGetTournamentById', selectedScheduleTournamentId)
+      .then(t => {
+        if (!t) return;
+        currentTournamentDetails = t;
+
+        if (!t.sports || t.sports.length === 0) return;
+        
+        tsSelect.innerHTML = t.sports.map(s => `<option value="${s.ts_id}">${s.sport_name} (${s.format === 'round_robin' ? 'Vòng tròn' : 'Loại trực tiếp'})</option>`).join('');
+        selectedScheduleTsId = t.sports[0].ts_id;
+        onScheduleTsChange();
+      });
+  }
+
+  function onScheduleTsChange() {
+    selectedScheduleTsId = document.getElementById('sched-ts-select').value;
+    const container = document.getElementById('schedule-matches-container');
+    if (!selectedScheduleTsId || !container) return;
+
+    container.innerHTML = `<div class="loader-center"><div class="spinner"></div><p>Đang tải danh sách trận đấu...</p></div>`;
+
+    App.server.call('apiGetMatchesByTournamentSport', selectedScheduleTsId)
+      .then(matches => {
+        renderScheduleMatchesList(matches || []);
+      })
+      .catch(err => {
+        container.innerHTML = `<div class="card"><p style="color:var(--danger);">Lỗi tải trận đấu: ${err.message}</p></div>`;
+      });
+  }
+
+  function renderScheduleMatchesList(matches) {
+    const container = document.getElementById('schedule-matches-container');
+    if (!container) return;
+
+    if (matches.length === 0) {
+      container.innerHTML = `
+        <div class="card" style="text-align:center; padding:3rem;">
+          <p style="color:var(--text-muted); font-size:1.1rem;">Chưa có lịch thi đấu cho môn này.</p>
+          <p style="font-size:0.9rem; color:var(--text-dim); margin-top:0.5rem;">Ban tổ chức sẽ sinh lịch thi đấu tự động sau khi kết thúc đợt đăng ký.</p>
+        </div>
+      `;
+      return;
+    }
+
+    // Group matches by Round Name
+    const roundGroups = {};
+    matches.forEach(m => {
+      const rName = m.round_name || `Vòng ${m.round}`;
+      if (!roundGroups[rName]) roundGroups[rName] = [];
+      roundGroups[rName].push(m);
+    });
+
+    const isLocked = currentTournamentDetails && ['completed', 'cancelled'].includes(currentTournamentDetails.status);
+    const isRefOrOrg = ['organizer', 'referee'].includes(App.state.user.role);
+
+    container.innerHTML = Object.keys(roundGroups).map(rName => `
+      <div class="card" style="margin-bottom:1.5rem;">
+        <div style="display:flex; justify-space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:0.5rem; margin-bottom:1rem;">
+          <h3 style="color:var(--primary); margin:0;">${rName}</h3>
+          ${isLocked ? `<span class="badge badge-completed">🔒 Đã khóa (Chỉ xem)</span>` : ''}
+        </div>
+        
+        <div class="table-container">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Đội 1</th>
+                <th style="text-align:center;">Tỉ Số</th>
+                <th>Đội 2</th>
+                <th>Địa Điểm</th>
+                <th>Trạng Thái</th>
+                ${isRefOrOrg ? '<th style="text-align:right;">Thao Tác</th>' : ''}
+              </tr>
+            </thead>
+            <tbody>
+              ${roundGroups[rName].map(m => `
+                <tr>
+                  <td>
+                    <strong style="${m.winner_team_id === m.team1_id ? 'color:var(--secondary);' : ''}">${m.team1_name}</strong>
+                  </td>
+                  <td style="text-align:center; font-weight:700; font-size:1.1rem; color:var(--accent);">
+                    ${m.status === 'completed' ? `${m.team1_score} - ${m.team2_score}` : 'VS'}
+                  </td>
+                  <td>
+                    <strong style="${m.winner_team_id === m.team2_id ? 'color:var(--secondary);' : ''}">${m.team2_name}</strong>
+                  </td>
+                  <td>${m.location || 'Sân chính'}</td>
+                  <td><span class="badge badge-${m.status}">${m.status}</span></td>
+                  ${isRefOrOrg ? `
+                    <td style="text-align:right;">
+                      ${isLocked ? `<span style="font-size:0.8rem; color:var(--text-muted);">🔒 Khóa</span>` : `
+                        <button class="btn btn-sm btn-primary" onclick="App.router.navigateTo('match_result', { matchId: '${m.match_id}', tournamentId: '${selectedScheduleTournamentId}', tsId: '${selectedScheduleTsId}' })">
+                          ✏️ Nhập Tỉ Số
+                        </button>
+                      `}
+                    </td>
+                  ` : ''}
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `).join('');
+  }
+</script>

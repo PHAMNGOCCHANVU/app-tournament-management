@@ -1,0 +1,144 @@
+<script>
+  /**
+   * Dashboard View Controller
+   */
+  App.views.dashboard = function (params = {}) {
+    const container = document.getElementById('app-view');
+
+    container.innerHTML = `
+      <!-- Hero Section -->
+      <div class="card" style="background: linear-gradient(135deg, rgba(99, 102, 241, 0.25), rgba(16, 185, 129, 0.15)); border-color: var(--border-highlight); margin-bottom: 2rem; padding: 2.5rem;">
+        <h1 style="font-size: 2.2rem; margin-bottom: 0.5rem;">Nền tảng Quản lý Giải đấu Thể thao</h1>
+        <p style="color: var(--text-muted); font-size: 1.1rem; max-width: 700px; margin-bottom: 1.5rem;">
+          Tạo giải đấu, tự động sinh lịch thi đấu theo thể thức Vòng tròn & Loại trực tiếp, theo dõi bảng xếp hạng và nhận thông báo kết quả qua Email.
+        </p>
+        <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
+          <button class="btn btn-primary" onclick="App.router.navigateTo('tournament_create')">🏆 Tạo Giải Đấu Mới</button>
+          <button class="btn btn-secondary" onclick="App.router.navigateTo('team_register')">⚽ Đăng Ký Đội Tham Gia</button>
+        </div>
+      </div>
+
+      <!-- Filters & Search Bar -->
+      <div style="display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin-bottom: 1.5rem; flex-wrap: wrap;">
+        <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;" id="status-filter-buttons">
+          <button class="btn btn-sm btn-secondary filter-btn active" data-status="all" onclick="filterTournaments('all')">Tất cả</button>
+          <button class="btn btn-sm btn-secondary filter-btn" data-status="open" onclick="filterTournaments('open')">Đang mở đăng ký</button>
+          <button class="btn btn-sm btn-secondary filter-btn" data-status="in_progress" onclick="filterTournaments('in_progress')">Đang thi đấu</button>
+          <button class="btn btn-sm btn-secondary filter-btn" data-status="completed" onclick="filterTournaments('completed')">Đã kết thúc</button>
+        </div>
+
+        <div style="width: 300px;">
+          <input type="text" class="form-control" id="search-tournament-input" placeholder="🔍 Tìm kiếm giải đấu..." onkeyup="searchTournaments()">
+        </div>
+      </div>
+
+      <!-- Tournament Cards Grid -->
+      <div id="tournament-cards-grid" class="grid-3">
+        <div class="loader-center" style="grid-column: 1 / -1;">
+          <div class="spinner"></div>
+          <p>Đang tải danh sách giải đấu...</p>
+        </div>
+      </div>
+    `;
+
+    // Load Tournament Data from Server
+    loadTournaments();
+  };
+
+  let cachedTournaments = [];
+
+  function loadTournaments() {
+    App.server.call('apiGetTournamentList')
+      .then(tournaments => {
+        cachedTournaments = tournaments || [];
+        renderTournamentCards(cachedTournaments);
+      })
+      .catch(err => {
+        App.toast.show('Không thể tải danh sách giải đấu: ' + err.message, 'error');
+        document.getElementById('tournament-cards-grid').innerHTML = `
+          <div class="card" style="grid-column: 1/-1; text-align:center; color:var(--danger);">
+            Lỗi khi kết nối với máy chủ: ${err.message}
+          </div>
+        `;
+      });
+  }
+
+  function renderTournamentCards(list) {
+    const grid = document.getElementById('tournament-cards-grid');
+    if (!grid) return;
+
+    if (list.length === 0) {
+      grid.innerHTML = `
+        <div class="card" style="grid-column: 1 / -1; text-align:center; padding:3rem;">
+          <p style="font-size:1.2rem; color:var(--text-muted);">Chưa có giải đấu nào phù hợp.</p>
+          <button class="btn btn-primary" style="margin-top:1rem;" onclick="App.router.navigateTo('tournament_create')">Tạo giải đấu đầu tiên</button>
+        </div>
+      `;
+      return;
+    }
+
+    const statusLabels = {
+      draft: 'Nháp',
+      open: 'Đang mở đăng ký',
+      in_progress: 'Đang diễn ra',
+      completed: 'Đã kết thúc',
+      cancelled: 'Đã hủy'
+    };
+
+    grid.innerHTML = list.map(t => {
+      const isOrganizer = App.state.user.email && (App.state.user.email.toLowerCase() === String(t.organizer_email).toLowerCase());
+
+      return `
+        <div class="card card-interactive" style="display:flex; flex-direction:column; justify-space-between;">
+          <div>
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:0.75rem;">
+              <span class="badge badge-${t.status}">${statusLabels[t.status] || t.status}</span>
+              <span style="font-size:0.8rem; color:var(--text-dim);">ID: ${t.tournament_id}</span>
+            </div>
+
+            <h3 style="margin-bottom:0.5rem; font-size:1.25rem;">${t.name}</h3>
+            <p style="color:var(--text-muted); font-size:0.9rem; margin-bottom:1rem; min-height: 2.7em; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;">
+              ${t.description || 'Chưa có mô tả giải đấu.'}
+            </p>
+
+            <div style="font-size:0.85rem; color:var(--text-muted); display:flex; flex-direction:column; gap:0.35rem; margin-bottom:1.25rem;">
+              <div>📍 <strong>Địa điểm:</strong> ${t.location}</div>
+              <div>📅 <strong>Bắt đầu:</strong> ${formatDate(t.start_date)}</div>
+              <div>⚽ <strong>Số môn:</strong> ${t.sports_count || 0} môn thi đấu</div>
+              <div>👥 <strong>Số đội đã duyệt:</strong> ${t.approved_teams_count || 0} đội</div>
+            </div>
+          </div>
+
+          <div style="display:flex; gap:0.5rem; margin-top:auto; padding-top:1rem; border-top:1px solid var(--border);">
+            <button class="btn btn-sm btn-secondary" style="flex:1;" onclick="App.router.navigateTo('schedule', { tournamentId: '${t.tournament_id}' })">🔍 Chi tiết</button>
+            ${t.status === 'open' ? `<button class="btn btn-sm btn-primary" style="flex:1;" onclick="App.router.navigateTo('team_register', { tournamentId: '${t.tournament_id}' })">✍️ Đăng ký</button>` : ''}
+            ${isOrganizer ? `<button class="btn btn-sm btn-success" style="flex:1;" onclick="App.router.navigateTo('tournament_manage', { tournamentId: '${t.tournament_id}' })">⚙️ Quản lý</button>` : ''}
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  function filterTournaments(status) {
+    document.querySelectorAll('#status-filter-buttons .filter-btn').forEach(btn => {
+      if (btn.dataset.status === status) btn.classList.add('active');
+      else btn.classList.remove('active');
+    });
+
+    if (status === 'all') {
+      renderTournamentCards(cachedTournaments);
+    } else {
+      const filtered = cachedTournaments.filter(t => t.status === status);
+      renderTournamentCards(filtered);
+    }
+  }
+
+  function searchTournaments() {
+    const query = (document.getElementById('search-tournament-input').value || '').toLowerCase();
+    const filtered = cachedTournaments.filter(t =>
+      t.name.toLowerCase().includes(query) ||
+      t.location.toLowerCase().includes(query)
+    );
+    renderTournamentCards(filtered);
+  }
+</script>

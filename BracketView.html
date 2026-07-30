@@ -1,0 +1,169 @@
+<script>
+  /**
+   * Elimination Bracket Tree Visualizer View Controller
+   */
+  App.views.bracket = function(params = {}) {
+    const container = document.getElementById('app-view');
+    const selectedTournamentId = params.tournamentId || '';
+
+    container.innerHTML = `
+      <div>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5rem; flex-wrap:wrap; gap:1rem;">
+          <h2>🌿 Sơ Đồ Nhánh Đấu Loại Trực Tiếp (Bracket)</h2>
+          <button class="btn btn-secondary btn-sm" onclick="App.router.navigateTo('schedule', { tournamentId: selectedBracketTournamentId })">📅 Xem Lịch Thi Đấu</button>
+        </div>
+
+        <!-- Filters -->
+        <div class="card" style="margin-bottom:1.5rem;">
+          <div class="grid-2">
+            <div class="form-group">
+              <label class="form-label">Chọn Giải Đấu</label>
+              <select class="form-control" id="bracket-tournament-select" onchange="onBracketTournamentChange()">
+                <option value="">-- Chọn Giải Đấu --</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Chọn Môn Thi Đấu (Loại Trực Tiếp)</label>
+              <select class="form-control" id="bracket-ts-select" onchange="onBracketTsChange()">
+                <option value="">-- Chọn Môn Thi Đấu --</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- Bracket Tree Render Container -->
+        <div id="bracket-tree-container">
+          <div class="loader-center"><div class="spinner"></div><p>Vui lòng chọn giải đấu.</p></div>
+        </div>
+      </div>
+    `;
+
+    loadBracketTournaments(selectedTournamentId);
+  };
+
+  let selectedBracketTournamentId = '';
+  let selectedBracketTsId = '';
+
+  function loadBracketTournaments(presetTId) {
+    App.server.call('apiGetTournamentList')
+      .then(list => {
+        const select = document.getElementById('bracket-tournament-select');
+        if (!select) return;
+
+        select.innerHTML = `<option value="">-- Chọn Giải Đấu --</option>` + 
+          (list || []).map(t => `<option value="${t.tournament_id}" ${t.tournament_id === presetTId ? 'selected' : ''}>${t.name}</option>`).join('');
+
+        if (presetTId) {
+          onBracketTournamentChange();
+        } else if (list && list.length > 0) {
+          select.value = list[0].tournament_id;
+          onBracketTournamentChange();
+        }
+      });
+  }
+
+  function onBracketTournamentChange() {
+    selectedBracketTournamentId = document.getElementById('bracket-tournament-select').value;
+    const tsSelect = document.getElementById('bracket-ts-select');
+    tsSelect.innerHTML = `<option value="">-- Chọn Môn Thi Đấu --</option>`;
+
+    if (!selectedBracketTournamentId) return;
+
+    App.server.call('apiGetTournamentById', selectedBracketTournamentId)
+      .then(t => {
+        if (!t || !t.sports || t.sports.length === 0) return;
+        
+        // Filter single_elimination sports
+        const eliminationSports = t.sports.filter(s => s.format === 'single_elimination');
+
+        if (eliminationSports.length === 0) {
+          document.getElementById('bracket-tree-container').innerHTML = `
+            <div class="card" style="text-align:center; padding:3rem;">
+              <p style="color:var(--text-muted);">Giải đấu này không sử dụng thể thức Loại trực tiếp (Single Elimination).</p>
+            </div>
+          `;
+          return;
+        }
+
+        tsSelect.innerHTML = eliminationSports.map(s => `<option value="${s.ts_id}">${s.sport_name}</option>`).join('');
+        selectedBracketTsId = eliminationSports[0].ts_id;
+        onBracketTsChange();
+      });
+  }
+
+  function onBracketTsChange() {
+    selectedBracketTsId = document.getElementById('bracket-ts-select').value;
+    const container = document.getElementById('bracket-tree-container');
+    if (!selectedBracketTsId || !container) return;
+
+    container.innerHTML = `<div class="loader-center"><div class="spinner"></div><p>Đang dựng nhánh đấu...</p></div>`;
+
+    App.server.call('apiGetMatchesByTournamentSport', selectedBracketTsId)
+      .then(matches => {
+        renderBracketTree(matches || []);
+      })
+      .catch(err => {
+        container.innerHTML = `<div class="card"><p style="color:var(--danger);">Lỗi dựng nhánh đấu: ${err.message}</p></div>`;
+      });
+  }
+
+  function renderBracketTree(matches) {
+    const container = document.getElementById('bracket-tree-container');
+    if (!container) return;
+
+    if (matches.length === 0) {
+      container.innerHTML = `
+        <div class="card" style="text-align:center; padding:3rem;">
+          <p style="color:var(--text-muted);">Chưa có cây nhánh đấu cho môn này.</p>
+        </div>
+      `;
+      return;
+    }
+
+    // Group by Round Number
+    const roundMap = {};
+    matches.forEach(m => {
+      const r = Number(m.round);
+      if (!roundMap[r]) roundMap[r] = [];
+      roundMap[r].push(m);
+    });
+
+    const roundNumbers = Object.keys(roundMap).map(Number).sort((a, b) => a - b);
+
+    container.innerHTML = `
+      <div class="card" style="overflow-x:auto;">
+        <div style="display:flex; gap:2.5rem; min-width:800px; padding:1rem 0;">
+          ${roundNumbers.map(rNum => {
+            const rMatches = roundMap[rNum];
+            const rName = rMatches[0].round_name || `Vòng ${rNum}`;
+
+            return `
+              <div style="flex:1; display:flex; flex-direction:column; justify-content:space-around; gap:1.5rem;">
+                <h4 style="text-align:center; color:var(--primary); margin-bottom:0.5rem; border-bottom:2px solid var(--border-highlight); padding-bottom:0.5rem;">
+                  ${rName}
+                </h4>
+
+                ${rMatches.map(m => `
+                  <div style="background:rgba(15,23,42,0.8); border:1px solid ${m.status === 'completed' ? 'var(--secondary)' : 'var(--border)'}; border-radius:var(--radius-md); padding:0.75rem; box-shadow:var(--shadow-sm);">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.35rem; font-size:0.85rem; ${m.winner_team_id === m.team1_id ? 'color:var(--secondary); font-weight:700;' : ''}">
+                      <span>${m.team1_name}</span>
+                      <span>${m.status === 'completed' ? m.team1_score : ''}</span>
+                    </div>
+
+                    <div style="height:1px; background:var(--border); margin:0.35rem 0;"></div>
+
+                    <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.85rem; ${m.winner_team_id === m.team2_id ? 'color:var(--secondary); font-weight:700;' : ''}">
+                      <span>${m.team2_name}</span>
+                      <span>${m.status === 'completed' ? m.team2_score : ''}</span>
+                    </div>
+                  </div>
+                `).join('')}
+              </div>
+            `;
+          }).join('')}
+        </div>
+      </div>
+    `;
+  }
+</script>

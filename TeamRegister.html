@@ -1,0 +1,199 @@
+<script>
+  /**
+   * Team Registration View Controller
+   */
+  App.views.team_register = function (params = {}) {
+    const container = document.getElementById('app-view');
+    const selectedTournamentId = params.tournamentId || '';
+
+    container.innerHTML = `
+      <div style="max-width: 800px; margin: 0 auto;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5rem;">
+          <h2>⚽ Đăng Ký Đội / Cá Nhân Tham Gia Giải</h2>
+          <button class="btn btn-secondary btn-sm" onclick="App.router.navigateTo('dashboard')">← Quay lại</button>
+        </div>
+
+        <form id="team-register-form" onsubmit="handleRegisterTeamSubmit(event)">
+          <!-- Select Tournament & Sport -->
+          <div class="card" style="margin-bottom:1.5rem;">
+            <h3 style="margin-bottom:1rem; color:var(--primary);">1. Chọn Giải Đấu & Môn Thi Đấu</h3>
+
+            <div class="form-group">
+              <label class="form-label">Chọn Giải Đấu *</label>
+              <select class="form-control" id="reg-tournament-select" required onchange="onRegisterTournamentChange()">
+                <option value="">-- Chọn Giải Đấu --</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Chọn Môn Thi Đấu *</label>
+              <select class="form-control" id="reg-ts-select" required onchange="onRegisterTsChange()">
+                <option value="">-- Chọn Môn Thi Đấu --</option>
+              </select>
+            </div>
+            
+            <div id="sport-rules-info" style="display:none; font-size:0.85rem; color:var(--text-muted); background:rgba(15,23,42,0.5); padding:0.75rem; border-radius:var(--radius-sm);">
+            </div>
+          </div>
+
+          <!-- Team Information -->
+          <div class="card" style="margin-bottom:1.5rem;">
+            <h3 style="margin-bottom:1rem; color:var(--secondary);">2. Thông tin Đội / Vận động viên</h3>
+
+            <div class="form-group">
+              <label class="form-label">Tên Đội / Tên VĐV *</label>
+              <input type="text" class="form-control" id="reg-team-name" required placeholder="Ví dụ: FC Sông Hồng hoặc Nguyễn Văn A">
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Email Đội trưởng / Người đại diện *</label>
+              <input type="email" class="form-control" id="reg-captain-email" required placeholder="doitruong@gmail.com">
+            </div>
+          </div>
+
+          <!-- Roster Members -->
+          <div class="card" style="margin-bottom:1.5rem;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+              <h3 style="color:var(--accent);">3. Danh sách Thành viên</h3>
+              <button type="button" class="btn btn-sm btn-secondary" onclick="addPlayerInputRow()">➕ Thêm Thành viên</button>
+            </div>
+
+            <div id="players-input-list">
+              <!-- Dynamic player input rows -->
+            </div>
+          </div>
+
+          <div style="display:flex; justify-content:flex-end; gap:1rem;">
+            <button type="button" class="btn btn-secondary" onclick="App.router.navigateTo('dashboard')">Hủy</button>
+            <button type="submit" class="btn btn-success" id="btn-submit-team-reg">✉️ Gửi Đơn Đăng Ký</button>
+          </div>
+        </form>
+      </div>
+    `;
+
+    loadOpenTournamentsForRegistration(selectedTournamentId);
+
+    // Set default captain email if logged in
+    if (App.state.user.email) {
+      document.getElementById('reg-captain-email').value = App.state.user.email;
+    }
+  };
+
+  let openTournamentsList = [];
+
+  function loadOpenTournamentsForRegistration(presetId) {
+    App.server.call('apiGetTournamentList', { status: 'open' })
+      .then(list => {
+        openTournamentsList = list || [];
+        const select = document.getElementById('reg-tournament-select');
+        if (!select) return;
+
+        select.innerHTML = `<option value="">-- Chọn Giải Đấu --</option>` +
+          openTournamentsList.map(t => `<option value="${t.tournament_id}" ${t.tournament_id === presetId ? 'selected' : ''}>${t.name} (📍 ${t.location})</option>`).join('');
+
+        if (presetId) {
+          onRegisterTournamentChange();
+        }
+      })
+      .catch(err => App.toast.show('Lỗi tải giải đấu: ' + err.message, 'error'));
+  }
+
+  function onRegisterTournamentChange() {
+    const tId = document.getElementById('reg-tournament-select').value;
+    const tsSelect = document.getElementById('reg-ts-select');
+    tsSelect.innerHTML = `<option value="">-- Chọn Môn Thi Đấu --</option>`;
+
+    if (!tId) return;
+
+    App.server.call('apiGetTournamentById', tId)
+      .then(t => {
+        if (!t || !t.sports) return;
+        const openSports = t.sports.filter(s => s.status === 'open');
+        tsSelect.innerHTML = `<option value="">-- Chọn Môn Thi Đấu --</option>` +
+          openSports.map(s => `<option value="${s.ts_id}">${s.sport_name} (Hạn: ${s.registration_deadline || 'Không có'})</option>`).join('');
+      });
+  }
+
+  function onRegisterTsChange() {
+    const playersList = document.getElementById('players-input-list');
+    playersList.innerHTML = '';
+
+    // Add Captain row by default
+    addPlayerInputRow('Đội trưởng', true);
+  }
+
+  function addPlayerInputRow(defaultRole = 'Thành viên', isCaptain = false) {
+    const list = document.getElementById('players-input-list');
+    if (!list) return;
+
+    const rowId = 'player-row-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
+
+    const div = document.createElement('div');
+    div.className = 'grid-4';
+    div.id = rowId;
+    div.style.marginBottom = '0.75rem';
+    div.style.alignItems = 'center';
+
+    div.innerHTML = `
+      <div>
+        <input type="text" class="form-control p-name" placeholder="Họ và tên" required>
+      </div>
+      <div>
+        <input type="email" class="form-control p-email" placeholder="Email Google" ${isCaptain ? 'required' : ''}>
+      </div>
+      <div>
+        <input type="text" class="form-control p-phone" placeholder="Số điện thoại">
+      </div>
+      <div style="display:flex; gap:0.5rem;">
+        <input type="number" class="form-control p-jersey" placeholder="Số áo" style="width:70px;">
+        ${!isCaptain ? `<button type="button" class="btn btn-sm btn-danger" onclick="document.getElementById('${rowId}').remove()">✕</button>` : '<span class="badge badge-open">Captain</span>'}
+      </div>
+    `;
+
+    list.appendChild(div);
+  }
+
+  function handleRegisterTeamSubmit(event) {
+    event.preventDefault();
+
+    const submitBtn = document.getElementById('btn-submit-team-reg');
+    submitBtn.disabled = true;
+    submitBtn.innerText = '⏳ Đang đăng ký...';
+
+    const playersData = [];
+    document.querySelectorAll('#players-input-list .grid-4').forEach((row, idx) => {
+      const name = row.querySelector('.p-name').value;
+      const email = row.querySelector('.p-email').value;
+      const phone = row.querySelector('.p-phone').value;
+      const jersey = row.querySelector('.p-jersey').value;
+
+      if (name) {
+        playersData.push({
+          name: name,
+          email: email,
+          phone: phone,
+          jersey_number: jersey,
+          role_in_team: idx === 0 ? 'captain' : 'player'
+        });
+      }
+    });
+
+    const payload = {
+      ts_id: document.getElementById('reg-ts-select').value,
+      name: document.getElementById('reg-team-name').value,
+      captain_email: document.getElementById('reg-captain-email').value,
+      players: playersData
+    };
+
+    App.server.call('apiRegisterTeam', payload)
+      .then(res => {
+        App.toast.show('Đăng ký đội thành công! Đơn đăng ký đang chờ Ban tổ chức duyệt.', 'success');
+        App.router.navigateTo('dashboard');
+      })
+      .catch(err => {
+        App.toast.show('Lỗi khi đăng ký: ' + err.message, 'error');
+        submitBtn.disabled = false;
+        submitBtn.innerText = '✉️ Gửi Đơn Đăng Ký';
+      });
+  }
+</script>

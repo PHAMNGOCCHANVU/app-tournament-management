@@ -1,0 +1,122 @@
+<script>
+  /**
+   * Match Result Entry View Controller (Referee/Organizer interface)
+   */
+  App.views.match_result = function(params = {}) {
+    const container = document.getElementById('app-view');
+    const matchId = params.matchId;
+
+    if (!matchId) {
+      container.innerHTML = `<div class="card"><p>Thiếu tham số matchId</p></div>`;
+      return;
+    }
+
+    container.innerHTML = `
+      <div style="max-width: 650px; margin: 0 auto;" id="match-result-wrapper">
+        <div class="loader-center"><div class="spinner"></div><p>Đang tải thông tin trận đấu...</p></div>
+      </div>
+    `;
+
+    loadMatchResultDetails(matchId);
+  };
+
+  function loadMatchResultDetails(matchId) {
+    App.server.call('apiGetMatchesByTournamentSport', '')
+      .catch(() => {})
+      .then(() => {
+        // Fetch matches via custom call or filter
+        return App.server.call('apiGetMatchesByTournamentSport', App.state.params.tsId || '');
+      })
+      .then(matches => {
+        const match = (matches || []).find(m => m.match_id === matchId);
+        if (!match) {
+          throw new Error('Không tìm thấy thông tin trận đấu này.');
+        }
+        renderMatchResultForm(match);
+      })
+      .catch(err => {
+        document.getElementById('match-result-wrapper').innerHTML = `
+          <div class="card" style="text-align:center; padding:2rem; color:var(--danger);">
+            ${err.message}
+            <div style="margin-top:1rem;">
+              <button class="btn btn-secondary" onclick="App.router.navigateTo('schedule')">Quay lại lịch thi đấu</button>
+            </div>
+          </div>
+        `;
+      });
+  }
+
+  function renderMatchResultForm(m) {
+    const wrapper = document.getElementById('match-result-wrapper');
+    if (!wrapper) return;
+
+    wrapper.innerHTML = `
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5rem;">
+        <h2>⚖️ Nhập Kết Quả Trận Đấu</h2>
+        <button class="btn btn-secondary btn-sm" onclick="App.router.navigateTo('schedule', { tournamentId: '${App.state.params.tournamentId || ''}' })">← Quay lại</button>
+      </div>
+
+      <div class="card">
+        <div style="text-align:center; margin-bottom:1.5rem;">
+          <span class="badge badge-in_progress">${m.round_name || 'Vòng ' + m.round}</span>
+          <p style="font-size:0.85rem; color:var(--text-muted); margin-top:0.35rem;">Sân: ${m.location || 'Sân chính'}</p>
+        </div>
+
+        <form id="match-score-form" onsubmit="handleUpdateScoreSubmit(event, '${m.match_id}')">
+          <div class="grid-2" style="align-items:center; gap:2rem; margin-bottom:2rem;">
+            <!-- Team 1 Card -->
+            <div style="text-align:center; background:rgba(15,23,42,0.6); padding:1.5rem; border-radius:var(--radius-md); border:1px solid var(--border);">
+              <h3 style="margin-bottom:1rem; font-size:1.3rem;">${m.team1_name}</h3>
+              <div class="form-group" style="margin-bottom:0;">
+                <label class="form-label">Tỉ số Đội 1</label>
+                <input type="number" class="form-control" id="score-t1" required value="${m.team1_score !== undefined ? m.team1_score : ''}" style="font-size:2rem; text-align:center; font-weight:800; height:60px;">
+              </div>
+            </div>
+
+            <!-- Team 2 Card -->
+            <div style="text-align:center; background:rgba(15,23,42,0.6); padding:1.5rem; border-radius:var(--radius-md); border:1px solid var(--border);">
+              <h3 style="margin-bottom:1rem; font-size:1.3rem;">${m.team2_name}</h3>
+              <div class="form-group" style="margin-bottom:0;">
+                <label class="form-label">Tỉ số Đội 2</label>
+                <input type="number" class="form-control" id="score-t2" required value="${m.team2_score !== undefined ? m.team2_score : ''}" style="font-size:2rem; text-align:center; font-weight:800; height:60px;">
+              </div>
+            </div>
+          </div>
+
+          <div class="form-group" style="margin-bottom:1.5rem;">
+            <label class="form-label">Ghi chú của Trọng tài (Thẻ phạt, sự cố, bù giờ...)</label>
+            <textarea class="form-control" id="match-notes" rows="3" placeholder="Nhập ghi chú trận đấu...">${m.notes || ''}</textarea>
+          </div>
+
+          <div style="display:flex; justify-content:flex-end; gap:1rem;">
+            <button type="button" class="btn btn-secondary" onclick="App.router.navigateTo('schedule', { tournamentId: '${App.state.params.tournamentId || ''}' })">Hủy</button>
+            <button type="submit" class="btn btn-primary" id="btn-save-score">💾 Lưu Kết Quả & Cập Nhật Bảng Xếp Hạng</button>
+          </div>
+        </form>
+      </div>
+    `;
+  }
+
+  function handleUpdateScoreSubmit(event, matchId) {
+    event.preventDefault();
+
+    const submitBtn = document.getElementById('btn-save-score');
+    submitBtn.disabled = true;
+    submitBtn.innerText = '⏳ Đang lưu...';
+
+    const t1Score = document.getElementById('score-t1').value;
+    const t2Score = document.getElementById('score-t2').value;
+    const notes = document.getElementById('match-notes').value;
+
+    App.server.call('apiUpdateMatchResult', matchId, t1Score, t2Score, notes)
+      .then(res => {
+        App.toast.show('Cập nhật tỉ số trận đấu và bảng xếp hạng thành công!', 'success');
+        App.router.navigateTo('schedule', { tournamentId: App.state.params.tournamentId || '' });
+      })
+      .catch(err => {
+        App.toast.show('Lỗi khi lưu kết quả: ' + err.message, 'error');
+        submitBtn.disabled = false;
+        submitBtn.innerText = '💾 Lưu Kết Quả & Cập Nhật Bảng Xếp Hạng';
+      });
+  }
+</script>
