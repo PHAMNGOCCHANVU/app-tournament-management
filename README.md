@@ -1,1 +1,1 @@
-# app-management-tournament
+# app-tournament-management
