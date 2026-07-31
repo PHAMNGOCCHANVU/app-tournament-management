@@ -45,8 +45,8 @@
           else el.classList.remove('active');
         });
 
-        // Role context will be loaded by each view's Bundle API call
-        // No redundant apiGetAuthContext call here
+        // Update user badge so current tournament role badge updates
+        App.updateUserBadge();
 
         const container = document.getElementById('app-view');
         if (!container) return;
@@ -155,7 +155,6 @@
 
     /**
      * Per-Tournament Role Management
-     * Caches and retrieves roles per tournament to prevent cross-tournament role leaking
      */
     setTournamentRole: function (tournamentId, role) {
       if (tournamentId && role) {
@@ -173,11 +172,63 @@
     },
 
     /**
+     * Mobile Responsive Drawer Toggle
+     */
+    toggleMobileMenu: function () {
+      const drawer = document.getElementById('mobile-drawer');
+      const overlay = document.getElementById('mobile-drawer-overlay');
+      if (drawer && overlay) {
+        drawer.classList.toggle('active');
+        overlay.classList.toggle('active');
+      }
+    },
+
+    closeMobileMenu: function () {
+      const drawer = document.getElementById('mobile-drawer');
+      const overlay = document.getElementById('mobile-drawer-overlay');
+      if (drawer && overlay) {
+        drawer.classList.remove('active');
+        overlay.classList.remove('active');
+      }
+    },
+
+    /**
+     * PC Circular Avatar Dropdown Popover Toggle
+     */
+    toggleUserDropdown: function (event) {
+      if (event) event.stopPropagation();
+      const popover = document.getElementById('user-dropdown-popover');
+      if (popover) {
+        popover.classList.toggle('active');
+      }
+    },
+
+    closeUserDropdown: function () {
+      const popover = document.getElementById('user-dropdown-popover');
+      if (popover) {
+        popover.classList.remove('active');
+      }
+    },
+
+    toggleMobileUserDropdown: function (event) {
+      if (event) event.stopPropagation();
+      const popover = document.getElementById('mobile-user-popover');
+      if (popover) {
+        popover.classList.toggle('active');
+      }
+    },
+
+    closeMobileUserDropdown: function () {
+      const popover = document.getElementById('mobile-user-popover');
+      if (popover) {
+        popover.classList.remove('active');
+      }
+    },
+
+    /**
      * App Initialization
-     * "Execute as user" mode → server automatically gets email via Session.getActiveUser()
      */
     init: function () {
-      // Single auth context call - server handles email via Session.getActiveUser()
       App.server.call('apiGetAuthContext', '', '')
         .then(res => {
           if (res) {
@@ -187,46 +238,94 @@
         })
         .catch(err => console.log('Auth check error:', err));
 
-      // Initial route loading
       const initialPage = window.INITIAL_PAGE || 'dashboard';
       const tournamentId = window.INITIAL_TOURNAMENT_ID || '';
       App.router.navigateTo(initialPage, { tournamentId });
     },
 
     /**
-     * Update Navbar User Badge
-     * Simplified for native auth - no manual login/logout needed
+     * Update Navbar User Badge & Mobile User Card
+     * PC: Renders Circular Avatar Button + Dropdown Popover (with Email, Role Badge & Profile link)
+     * Mobile Drawer Bottom: Renders Circular Avatar Button + Popover Menu (with Email, Role Badge & Profile link)
      */
     updateUserBadge: function () {
       const userEl = document.getElementById('nav-user-container');
-      if (!userEl) return;
+      const mobileUserEl = document.getElementById('mobile-drawer-user-container');
 
       const displayEmail = App.state.user.email || '';
 
-      if (displayEmail) {
-        const currentTId = App.state.params ? App.state.params.tournamentId : '';
-        const roleInCurrentT = currentTId ? App.getRoleForTournament(currentTId) : '';
-        const roleLabel = roleInCurrentT || App.state.user.role || 'viewer';
+      const currentTId = App.state.params ? App.state.params.tournamentId : '';
+      const roleInCurrentT = currentTId ? App.getRoleForTournament(currentTId) : '';
+      const roleLabel = roleInCurrentT || App.state.user.role || 'viewer';
 
-        const roleStyles = {
-          organizer: 'background:linear-gradient(135deg,#6366f1,#8b5cf6); color:#fff;',
-          referee: 'background:linear-gradient(135deg,#10b981,#059669); color:#fff;',
-          player: 'background:linear-gradient(135deg,#f59e0b,#d97706); color:#fff;',
-          viewer: 'background:rgba(255,255,255,0.1); color:#94a3b8;'
-        };
-        
-        userEl.innerHTML = `
-          <div style="display:flex; align-items:center; gap:0.5rem;">
-            👤
-            <span style="font-weight:600;">${displayEmail}</span>
-            <span class="user-badge" style="${roleStyles[roleLabel] || roleStyles.viewer}">${roleLabel}</span>
-          </div>
-        `;
+      const roleStyles = {
+        organizer: 'background:linear-gradient(135deg,#6366f1,#8b5cf6); color:#fff;',
+        referee: 'background:linear-gradient(135deg,#10b981,#059669); color:#fff;',
+        player: 'background:linear-gradient(135deg,#f59e0b,#d97706); color:#fff;',
+        viewer: 'background:rgba(255,255,255,0.1); color:#94a3b8;'
+      };
+
+      const initialChar = displayEmail ? displayEmail.charAt(0).toUpperCase() : '👤';
+
+      if (displayEmail) {
+        // Render PC Avatar + Popover Dropdown
+        if (userEl) {
+          userEl.innerHTML = `
+            <div class="user-avatar-btn" id="user-avatar-btn" onclick="App.toggleUserDropdown(event)" title="${displayEmail}">
+              ${initialChar}
+            </div>
+
+            <div class="user-dropdown-popover" id="user-dropdown-popover">
+              <div class="user-popover-email">${displayEmail}</div>
+              <div class="user-popover-badge">
+                <span class="user-badge" style="${roleStyles[roleLabel] || roleStyles.viewer}">${roleLabel}</span>
+              </div>
+              <div class="user-popover-actions">
+                <button class="btn btn-sm btn-secondary" style="width:100%; justify-content:center;" onclick="App.router.navigateTo('profile'); App.closeUserDropdown();">
+                  👤 Profile
+                </button>
+              </div>
+            </div>
+          `;
+        }
+
+        // Render Mobile Drawer Bottom Footer Avatar Button + Popover
+        if (mobileUserEl) {
+          mobileUserEl.innerHTML = `
+            <div style="display:flex; align-items:center; gap:0.75rem; cursor:pointer;" id="mobile-avatar-btn" onclick="App.toggleMobileUserDropdown(event)">
+              <div class="user-avatar-btn" style="width:40px; height:40px; font-size:1.05rem; flex-shrink:0;">
+                ${initialChar}
+              </div>
+              <div style="overflow:hidden; flex:1;">
+                <div style="font-weight:600; font-size:0.85rem; color:#fff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${displayEmail}</div>
+                <span class="user-badge" style="margin-top:0.15rem; font-size:0.7rem; ${roleStyles[roleLabel] || roleStyles.viewer}">${roleLabel}</span>
+              </div>
+            </div>
+
+            <div class="mobile-user-popover" id="mobile-user-popover">
+              <div class="user-popover-email">${displayEmail}</div>
+              <div class="user-popover-badge">
+                <span class="user-badge" style="${roleStyles[roleLabel] || roleStyles.viewer}">${roleLabel}</span>
+              </div>
+              <div class="user-popover-actions">
+                <button class="btn btn-sm btn-secondary" style="width:100%; justify-content:center;" onclick="App.router.navigateTo('profile'); App.closeMobileMenu(); App.closeMobileUserDropdown();">
+                  👤 Profile
+                </button>
+              </div>
+            </div>
+          `;
+        }
       } else {
-        userEl.innerHTML = `
-          <span style="color:var(--text-muted);">Đang xác thực...</span>
-          <span class="user-badge" style="background:rgba(255,255,255,0.1); color:#fff;">Viewer</span>
-        `;
+        if (userEl) {
+          userEl.innerHTML = `
+            <span style="color:var(--text-muted); font-size:0.85rem;">Đang xác thực...</span>
+          `;
+        }
+        if (mobileUserEl) {
+          mobileUserEl.innerHTML = `
+            <span style="color:var(--text-muted); font-size:0.85rem;">Đang xác thực...</span>
+          `;
+        }
       }
     }
   };
@@ -255,6 +354,27 @@
   };
 
   var formatDate = window.formatDate;
+
+  // Global listener to close User Avatar Popovers when clicking outside
+  document.addEventListener('click', (event) => {
+    // PC Popover
+    const popover = document.getElementById('user-dropdown-popover');
+    const avatarBtn = document.getElementById('user-avatar-btn');
+    if (popover && popover.classList.contains('active')) {
+      if (!popover.contains(event.target) && (!avatarBtn || !avatarBtn.contains(event.target))) {
+        App.closeUserDropdown();
+      }
+    }
+
+    // Mobile Popover
+    const mobilePopover = document.getElementById('mobile-user-popover');
+    const mobileAvatarBtn = document.getElementById('mobile-avatar-btn');
+    if (mobilePopover && mobilePopover.classList.contains('active')) {
+      if (!mobilePopover.contains(event.target) && (!mobileAvatarBtn || !mobileAvatarBtn.contains(event.target))) {
+        App.closeMobileUserDropdown();
+      }
+    }
+  });
 
   document.addEventListener('DOMContentLoaded', () => {
     App.init();

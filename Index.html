@@ -11,37 +11,76 @@
   <!-- Navigation Bar -->
   <nav class="navbar">
     <div class="navbar-inner">
+      <!-- Mobile Hamburger Menu Button -->
+      <button class="mobile-menu-toggle" onclick="App.toggleMobileMenu()" aria-label="Toggle Navigation Menu">☰</button>
+
       <div class="brand-logo" onclick="App.router.navigateTo('dashboard')">
         <div class="brand-logo-icon">🏆</div>
         <span>SportTournament</span>
       </div>
 
+      <!-- Desktop Header Navigation Links (5 concise English items) -->
       <ul class="nav-links">
         <li class="nav-item active" data-page="dashboard" onclick="App.router.navigateTo('dashboard')">
-          Trang chủ
+          Home
         </li>
         <li class="nav-item" data-page="tournament_create" onclick="App.router.navigateTo('tournament_create')">
-          + Tạo giải đấu
+          Create
         </li>
         <li class="nav-item" data-page="team_register" onclick="App.router.navigateTo('team_register')">
-          Đăng ký đội
+          Register
         </li>
         <li class="nav-item" data-page="schedule" onclick="App.router.navigateTo('schedule')">
-          Lịch thi đấu
+          Schedule
         </li>
         <li class="nav-item" data-page="ranking" onclick="App.router.navigateTo('ranking')">
-          Bảng xếp hạng
-        </li>
-        <li class="nav-item" data-page="profile" onclick="App.router.navigateTo('profile')">
-          Cá nhân
+          Standings
         </li>
       </ul>
 
+      <!-- Desktop Circular Avatar Account Container -->
       <div class="nav-user" id="nav-user-container">
-        <span>Đang kiểm tra tài khoản...</span>
+        <span>Đang xác thực...</span>
       </div>
     </div>
   </nav>
+
+  <!-- Mobile Drawer Sidebar Backdrop Overlay -->
+  <div class="mobile-drawer-overlay" id="mobile-drawer-overlay" onclick="App.closeMobileMenu()"></div>
+
+  <!-- Mobile Drawer Sidebar Navigation -->
+  <aside class="mobile-drawer" id="mobile-drawer">
+    <div class="mobile-drawer-header">
+      <div class="brand-logo" onclick="App.router.navigateTo('dashboard'); App.closeMobileMenu();">
+        <div class="brand-logo-icon">🏆</div>
+        <span>SportTournament</span>
+      </div>
+    </div>
+
+    <!-- Mobile Navigation Links (5 concise English items) -->
+    <ul class="mobile-nav-links">
+      <li onclick="App.router.navigateTo('dashboard'); App.closeMobileMenu();">
+        🏆 Home
+      </li>
+      <li onclick="App.router.navigateTo('tournament_create'); App.closeMobileMenu();">
+        ➕ Create
+      </li>
+      <li onclick="App.router.navigateTo('team_register'); App.closeMobileMenu();">
+        📝 Register
+      </li>
+      <li onclick="App.router.navigateTo('schedule'); App.closeMobileMenu();">
+        📅 Schedule
+      </li>
+      <li onclick="App.router.navigateTo('ranking'); App.closeMobileMenu();">
+        📊 Standings
+      </li>
+    </ul>
+
+    <!-- Mobile Drawer User Account Card at Bottom -->
+    <div class="mobile-drawer-footer" id="mobile-drawer-user-container">
+      <div class="loader-center"><div class="spinner"></div></div>
+    </div>
+  </aside>
 
   <!-- Main View Container -->
   <main class="app-container">
