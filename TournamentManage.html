@@ -24,10 +24,8 @@
   let currentActiveTsId = '';
 
   function loadTournamentManageData(tournamentId) {
-    const clientEmail = App.state.user.email || localStorage.getItem('user_email') || '';
-
     // SINGLE 1-ROUND-TRIP HIGH-PERFORMANCE BUNDLE CALL!
-    App.server.call('apiGetTournamentManageBundle', tournamentId, clientEmail)
+    App.server.call('apiGetTournamentManageBundle', tournamentId)
       .then(bundle => {
         if (!bundle || !bundle.tournament) throw new Error('Không tìm thấy thông tin giải đấu.');
 
@@ -249,8 +247,7 @@
   }
 
   function changeTournamentStatus(tournamentId, status) {
-    const clientEmail = App.state.user.email || localStorage.getItem('user_email') || '';
-    App.server.call('apiUpdateTournamentStatus', tournamentId, status, clientEmail)
+    App.server.call('apiUpdateTournamentStatus', tournamentId, status)
       .then(() => {
         App.toast.show('Cập nhật trạng thái thành công!', 'success');
         loadTournamentManageData(tournamentId);
@@ -259,8 +256,7 @@
   }
 
   function approveTeamReg(teamId) {
-    const clientEmail = App.state.user.email || localStorage.getItem('user_email') || '';
-    App.server.call('apiApproveTeam', teamId, clientEmail)
+    App.server.call('apiApproveTeam', teamId)
       .then(() => {
         App.toast.show('Đã duyệt đội tham gia!', 'success');
         loadTournamentManageData(currentManageTournament.tournament_id);
@@ -269,8 +265,7 @@
   }
 
   function rejectTeamReg(teamId) {
-    const clientEmail = App.state.user.email || localStorage.getItem('user_email') || '';
-    App.server.call('apiRejectTeam', teamId, clientEmail)
+    App.server.call('apiRejectTeam', teamId)
       .then(() => {
         App.toast.show('Đã từ chối đơn đăng ký!', 'info');
         loadTournamentManageData(currentManageTournament.tournament_id);
@@ -279,8 +274,7 @@
   }
 
   function withdrawTeamReg(teamId) {
-    const clientEmail = App.state.user.email || localStorage.getItem('user_email') || '';
-    App.server.call('apiWithdrawTeam', teamId, clientEmail)
+    App.server.call('apiWithdrawTeam', teamId)
       .then(() => {
         App.toast.show('Đã hủy trạng thái đội!', 'info');
         loadTournamentManageData(currentManageTournament.tournament_id);
@@ -289,9 +283,8 @@
   }
 
   function generateFixturesForTs(tsId) {
-    const clientEmail = App.state.user.email || localStorage.getItem('user_email') || '';
     App.modal.open('Xác nhận Sinh Lịch Thi Đấu', 'Hệ thống sẽ xóa lịch cũ (nếu có) và sinh lịch thi đấu mới cho môn này. Bạn có chắc chắn không?', () => {
-      App.server.call('apiGenerateFixtures', tsId, clientEmail)
+      App.server.call('apiGenerateFixtures', tsId)
         .then(() => {
           App.toast.show('Sinh lịch thi đấu thành công và đã gửi thông báo Email!', 'success');
           App.router.navigateTo('schedule', { tournamentId: currentManageTournament.tournament_id });
@@ -309,8 +302,7 @@
       return;
     }
 
-    const clientEmail = App.state.user.email || localStorage.getItem('user_email') || '';
-    App.server.call('apiAssignRole', tournamentId, targetEmail, 'referee', clientEmail)
+    App.server.call('apiAssignRole', tournamentId, targetEmail, 'referee')
       .then(() => {
         App.toast.show(`Đã gán vai trò Referee cho ${targetEmail}!`, 'success');
         emailInput.value = '';
@@ -320,9 +312,8 @@
   }
 
   function revokeRefereeRole(tournamentId, targetEmail) {
-    const clientEmail = App.state.user.email || localStorage.getItem('user_email') || '';
     App.modal.open('Thu Hồi Quyền Trọng Tài', `Bạn có chắc chắn muốn thu hồi quyền Trọng tài của email <strong>${targetEmail}</strong>?`, () => {
-      App.server.call('apiRevokeRole', tournamentId, targetEmail, 'referee', clientEmail)
+      App.server.call('apiRevokeRole', tournamentId, targetEmail, 'referee')
         .then(res => {
           App.toast.show(res.message || 'Đã thu hồi quyền Trọng tài!', 'info');
           loadAssignedReferees(tournamentId);
@@ -332,9 +323,8 @@
   }
 
   function deleteCurrentTournament(tournamentId) {
-    const clientEmail = App.state.user.email || localStorage.getItem('user_email') || '';
     App.modal.open('Xóa Giải Đấu', 'Bạn có chắc chắn muốn xóa giải đấu này khỏi hệ thống?', () => {
-      App.server.call('apiDeleteTournament', tournamentId, clientEmail)
+      App.server.call('apiDeleteTournament', tournamentId)
         .then(() => {
           App.toast.show('Đã xóa giải đấu!', 'info');
           App.router.navigateTo('dashboard');

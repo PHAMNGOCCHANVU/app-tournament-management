@@ -220,11 +220,11 @@ class MatchService {
   /**
    * Generate Fixtures for a TournamentSport
    */
-  generateFixtures(tsId, clientEmail) {
+  generateFixtures(tsId) {
     const ts = this.tsRepo.getById(tsId);
     if (!ts) throw new Error('Không tìm thấy thông tin môn thi đấu.');
 
-    getAuthService().checkPermission(ts.tournament_id, ['organizer'], clientEmail);
+    getAuthService().checkPermission(ts.tournament_id, ['organizer']);
 
     const approvedTeams = this.teamRepo.where('ts_id', tsId).filter(t => t.status === 'approved');
     if (approvedTeams.length < Number(ts.min_teams)) {
@@ -260,7 +260,7 @@ class MatchService {
   /**
    * Update Match Result (Score & Winner)
    */
-  updateMatchResult(matchId, team1Score, team2Score, notes, clientEmail) {
+  updateMatchResult(matchId, team1Score, team2Score, notes) {
     const match = this.matchRepo.getById(matchId);
     if (!match) throw new Error('Không tìm thấy trận đấu.');
 
@@ -276,7 +276,7 @@ class MatchService {
     }
 
     const auth = getAuthService();
-    auth.checkPermission(ts.tournament_id, ['organizer', 'referee'], clientEmail);
+    auth.checkPermission(ts.tournament_id, ['organizer', 'referee']);
 
     const s1 = Number(team1Score);
     const s2 = Number(team2Score);
@@ -294,7 +294,7 @@ class MatchService {
       throw new Error('Thể thức Loại trực tiếp không chấp nhận kết quả Hòa. Vui lòng nhập tỉ số phụ/luân lưu để xác định đội thắng.');
     }
 
-    const updatedUser = auth.getCurrentUserEmail() || clientEmail;
+    const updatedUser = auth.getCurrentUserEmail();
 
     const updatedMatch = this.matchRepo.update(matchId, {
       team1_score: s1,
@@ -385,12 +385,12 @@ function getMatchService() {
 /**
  * Server Exposed APIs for Client
  */
-function apiGenerateFixtures(tsId, clientEmail) {
-  return getMatchService().generateFixtures(tsId, clientEmail);
+function apiGenerateFixtures(tsId) {
+  return getMatchService().generateFixtures(tsId);
 }
 
-function apiUpdateMatchResult(matchId, team1Score, team2Score, notes, clientEmail) {
-  return getMatchService().updateMatchResult(matchId, team1Score, team2Score, notes, clientEmail);
+function apiUpdateMatchResult(matchId, team1Score, team2Score, notes) {
+  return getMatchService().updateMatchResult(matchId, team1Score, team2Score, notes);
 }
 
 function apiGetMatchesByTournamentSport(tsId) {

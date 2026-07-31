@@ -116,18 +116,18 @@ class TeamService {
   /**
    * Approve team registration (Organizer only)
    */
-  approveTeam(teamId, clientEmail) {
+  approveTeam(teamId) {
     const team = this.teamRepo.getById(teamId);
     if (!team) throw new Error('Không tìm thấy thông tin đội.');
 
     const ts = this.tsRepo.getById(team.ts_id);
     const auth = getAuthService();
-    auth.checkPermission(ts.tournament_id, ['organizer'], clientEmail);
+    auth.checkPermission(ts.tournament_id, ['organizer']);
 
     const updated = this.teamRepo.update(teamId, { status: 'approved' });
 
     const players = this.playerRepo.where('team_id', teamId);
-    const userEmail = auth.getCurrentUserEmail() || clientEmail || team.captain_email;
+    const userEmail = auth.getCurrentUserEmail() || team.captain_email;
     
     auth.assignRole(ts.tournament_id, team.captain_email, 'player', userEmail);
     players.forEach(p => {
@@ -142,12 +142,12 @@ class TeamService {
   /**
    * Reject team registration (Organizer only)
    */
-  rejectTeam(teamId, clientEmail) {
+  rejectTeam(teamId) {
     const team = this.teamRepo.getById(teamId);
     if (!team) throw new Error('Không tìm thấy thông tin đội.');
 
     const ts = this.tsRepo.getById(team.ts_id);
-    getAuthService().checkPermission(ts.tournament_id, ['organizer'], clientEmail);
+    getAuthService().checkPermission(ts.tournament_id, ['organizer']);
 
     return this.teamRepo.update(teamId, { status: 'rejected' });
   }
@@ -155,13 +155,13 @@ class TeamService {
   /**
    * Withdraw team registration
    */
-  withdrawTeam(teamId, clientEmail) {
+  withdrawTeam(teamId) {
     const team = this.teamRepo.getById(teamId);
     if (!team) throw new Error('Không tìm thấy thông tin đội.');
 
     const ts = this.tsRepo.getById(team.ts_id);
     const auth = getAuthService();
-    let currentUser = auth.getCurrentUserEmail() || clientEmail;
+    let currentUser = auth.getCurrentUserEmail();
     const role = auth.getUserRole(ts.tournament_id, currentUser);
 
     if (role !== 'organizer' && currentUser && currentUser.toLowerCase() !== String(team.captain_email).toLowerCase()) {
@@ -227,16 +227,16 @@ function apiRegisterTeam(data) {
   return getTeamService().registerTeam(data);
 }
 
-function apiApproveTeam(teamId, clientEmail) {
-  return getTeamService().approveTeam(teamId, clientEmail);
+function apiApproveTeam(teamId) {
+  return getTeamService().approveTeam(teamId);
 }
 
-function apiRejectTeam(teamId, clientEmail) {
-  return getTeamService().rejectTeam(teamId, clientEmail);
+function apiRejectTeam(teamId) {
+  return getTeamService().rejectTeam(teamId);
 }
 
-function apiWithdrawTeam(teamId, clientEmail) {
-  return getTeamService().withdrawTeam(teamId, clientEmail);
+function apiWithdrawTeam(teamId) {
+  return getTeamService().withdrawTeam(teamId);
 }
 
 function apiGetTeamsByTournamentSport(tsId) {

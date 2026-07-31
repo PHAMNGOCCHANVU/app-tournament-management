@@ -55,7 +55,7 @@
   let currentTournamentDetails = null;
 
   function loadScheduleBundle(presetTId) {
-    App.server.call('apiGetSchedulePageBundle', presetTId || '', '')
+    App.server.call('apiGetSchedulePageBundle', selectedScheduleTournamentId)
       .then(bundle => {
         if (!bundle) return;
 
@@ -115,7 +115,7 @@
     if (!selectedScheduleTournamentId) return;
 
     // Use bundle API for tournament change too (1 call instead of 3)
-    App.server.call('apiGetSchedulePageBundle', selectedScheduleTournamentId, '')
+    App.server.call('apiGetSchedulePageBundle', selectedScheduleTournamentId)
       .then(bundle => {
         if (!bundle) return;
 

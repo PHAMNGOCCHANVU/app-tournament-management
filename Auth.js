@@ -1,7 +1,7 @@
 /**
- * Auth.gs - Dual-Layer Authentication & Role-Based Access Control (RBAC)
- * Tầng 1: System-Level Auth (super_admin, system_user, guest)
- * Tầng 2: Tournament-Level Auth (organizer, referee, player, viewer)
+ * Auth.js - Pure Tournament-Scoped Role-Based Access Control (RBAC)
+ * Vai trò ở cấp hệ thống: Mọi tài khoản Google đều bình đẳng
+ * Vai trò ở cấp giải đấu: Organizer (Người tạo giải), Referee (Trọng tài), Player (VĐV), Viewer (Người xem)
  */
 
 class AuthService {
@@ -10,18 +10,6 @@ class AuthService {
   get tournamentRepo() { return new BaseRepository('Tournament', 'tournament_id'); }
   get teamRepo() { return new BaseRepository('Team', 'team_id'); }
   get playerRepo() { return new BaseRepository('Player', 'player_id'); }
-
-  /**
-   * Lấy Email của Người sở hữu Apps Script (Super Admin tối cao)
-   */
-  getSystemAdminEmail() {
-    try {
-      const email = Session.getEffectiveUser().getEmail();
-      return email ? email.toLowerCase().trim() : '';
-    } catch (e) {
-      return '';
-    }
-  }
 
   /**
    * Get active user email from session
@@ -36,7 +24,7 @@ class AuthService {
   }
 
   /**
-   * Đăng ký hoặc cập nhật hồ sơ người dùng sau khi Đăng nhập bằng Google
+   * Đăng ký hoặc cập nhật hồ sơ người dùng
    */
   registerUser(email, displayName, pictureUrl) {
     if (!email) return null;
@@ -59,60 +47,51 @@ class AuthService {
   }
 
   /**
-   * Xác định vai trò của người dùng (Hệ thống & Giải đấu)
+   * Xác định vai trò duy nhất theo Giải đấu (Tournament-Scoped RBAC)
    */
   getUserRole(tournamentId, userEmail) {
     const email = (userEmail || this.getCurrentUserEmail()).toLowerCase().trim();
-    const superAdminEmail = this.getSystemAdminEmail();
+    if (!email || !tournamentId) return 'viewer';
 
-    if (!email) return 'viewer';
-
-    // Nếu là Super Admin (Chủ sở hữu dự án Apps Script) -> Có toàn quyền Organizer trên mọi giải đấu
-    if (superAdminEmail && email === superAdminEmail) {
+    // 1. Kiểm tra nếu là Người tạo giải đấu
+    const tournament = this.tournamentRepo.getById(tournamentId);
+    if (tournament && String(tournament.organizer_email).toLowerCase().trim() === email) {
       return 'organizer';
     }
 
-    if (tournamentId) {
-      // 1. Kiểm tra nếu là Người tạo giải đấu
-      const tournament = this.tournamentRepo.getById(tournamentId);
-      if (tournament && String(tournament.organizer_email).toLowerCase().trim() === email) {
-        return 'organizer';
-      }
+    // 2. Kiểm tra vai trò được gán tường minh trong sheet TournamentRole (VD: referee)
+    const roleRecord = this.roleRepo.findOne(r => 
+      String(r.tournament_id) === String(tournamentId) && 
+      String(r.user_email).toLowerCase().trim() === email
+    );
+    if (roleRecord) {
+      return roleRecord.role;
+    }
 
-      // 2. Kiểm tra vai trò được gán tường minh trong sheet TournamentRole
-      const roleRecord = this.roleRepo.findOne(r => 
-        String(r.tournament_id) === String(tournamentId) && 
-        String(r.user_email).toLowerCase().trim() === email
+    // 3. Kiểm tra vai trò VĐV / Đội trưởng trong các đội đã duyệt của giải
+    const tsRepo = new BaseRepository('TournamentSport', 'ts_id');
+    const tournamentSports = tsRepo.where('tournament_id', tournamentId);
+    const tsIds = tournamentSports.map(ts => ts.ts_id);
+
+    const allTeams = this.teamRepo.getAll();
+    const userTeams = allTeams.filter(t => tsIds.includes(t.ts_id));
+    const teamIds = userTeams.map(t => t.team_id);
+
+    if (teamIds.length > 0) {
+      const isCaptain = userTeams.some(t => String(t.captain_email).toLowerCase().trim() === email);
+      if (isCaptain) return 'player';
+
+      const playerMatch = this.playerRepo.findOne(p => 
+        teamIds.includes(p.team_id) && String(p.email).toLowerCase().trim() === email
       );
-      if (roleRecord) {
-        return roleRecord.role;
-      }
-
-      // 3. Kiểm tra vai trò VĐV / Đội trưởng trong các đội đã duyệt
-      const tsRepo = new BaseRepository('TournamentSport', 'ts_id');
-      const tournamentSports = tsRepo.where('tournament_id', tournamentId);
-      const tsIds = tournamentSports.map(ts => ts.ts_id);
-
-      const allTeams = this.teamRepo.getAll();
-      const userTeams = allTeams.filter(t => tsIds.includes(t.ts_id));
-      const teamIds = userTeams.map(t => t.team_id);
-
-      if (teamIds.length > 0) {
-        const isCaptain = userTeams.some(t => String(t.captain_email).toLowerCase().trim() === email);
-        if (isCaptain) return 'player';
-
-        const playerMatch = this.playerRepo.findOne(p => 
-          teamIds.includes(p.team_id) && String(p.email).toLowerCase().trim() === email
-        );
-        if (playerMatch) return 'player';
-      }
+      if (playerMatch) return 'player';
     }
 
     return 'viewer';
   }
 
   /**
-   * Gán vai trò cho người dùng (Organizer & Super Admin có quyền)
+   * Gán vai trò cho người dùng trong giải đấu (Chỉ Organizer của giải đó mới có quyền)
    */
   assignRole(tournamentId, targetEmail, role, assignedBy) {
     if (!['organizer', 'referee', 'player'].includes(role)) {
@@ -145,7 +124,7 @@ class AuthService {
   }
 
   /**
-   * Thu hồi vai trò người dùng trong giải đấu (Role Revocation)
+   * Thu hồi vai trò người dùng trong giải đấu
    */
   revokeRole(tournamentId, targetEmail, role, revokedBy) {
     const cleanEmail = targetEmail.toLowerCase().trim();
@@ -172,24 +151,14 @@ class AuthService {
   }
 
   /**
-   * Kiểm tra quyền thực thi API (Hỗ trợ clientEmail fallback khi Google ẩn email)
+   * Kiểm tra quyền thực thi API ở cấp giải đấu
    */
-  checkPermission(tournamentId, allowedRoles, clientEmail) {
-    let email = this.getCurrentUserEmail();
-    if (!email && clientEmail) {
-      email = String(clientEmail).toLowerCase().trim();
-    }
-
-    const superAdminEmail = this.getSystemAdminEmail();
-
-    // Super Admin có toàn quyền bypass
-    if (superAdminEmail && email === superAdminEmail) {
-      return { email, role: 'super_admin' };
-    }
-
+  checkPermission(tournamentId, allowedRoles) {
+    const email = this.getCurrentUserEmail();
     const role = this.getUserRole(tournamentId, email);
+
     if (!allowedRoles.includes(role)) {
-      throw new Error(`Bạn không có quyền thực hiện thao tác này. Quyền hiện tại: ${role}. Quyền yêu cầu: ${allowedRoles.join(', ')}`);
+      throw new Error(`Bạn không có quyền thực hiện thao tác này ở giải đấu. Quyền hiện tại: ${role}. Quyền yêu cầu: ${allowedRoles.join(', ')}`);
     }
     return { email, role };
   }
@@ -210,9 +179,6 @@ function getAuthService() {
 function apiGetAuthContext(tournamentId) {
   const auth = getAuthService();
   const email = auth.getCurrentUserEmail();
-  const superAdminEmail = auth.getSystemAdminEmail();
-
-  const isSuperAdmin = (superAdminEmail && email === superAdminEmail);
   const role = auth.getUserRole(tournamentId, email);
   
   if (email) {
@@ -222,23 +188,21 @@ function apiGetAuthContext(tournamentId) {
   return {
     email: email,
     role: role,
-    isSuperAdmin: isSuperAdmin,
-    superAdminEmail: superAdminEmail,
     isLoggedIn: !!email
   };
 }
 
-function apiAssignRole(tournamentId, targetEmail, role, clientEmail) {
+function apiAssignRole(tournamentId, targetEmail, role) {
   const auth = getAuthService();
-  auth.checkPermission(tournamentId, ['organizer'], clientEmail);
-  let currentEmail = auth.getCurrentUserEmail() || clientEmail;
+  auth.checkPermission(tournamentId, ['organizer']);
+  const currentEmail = auth.getCurrentUserEmail();
   return auth.assignRole(tournamentId, targetEmail, role, currentEmail);
 }
 
-function apiRevokeRole(tournamentId, targetEmail, role, clientEmail) {
+function apiRevokeRole(tournamentId, targetEmail, role) {
   const auth = getAuthService();
-  auth.checkPermission(tournamentId, ['organizer'], clientEmail);
-  let currentEmail = auth.getCurrentUserEmail() || clientEmail;
+  auth.checkPermission(tournamentId, ['organizer']);
+  const currentEmail = auth.getCurrentUserEmail();
   return auth.revokeRole(tournamentId, targetEmail, role, currentEmail);
 }
 

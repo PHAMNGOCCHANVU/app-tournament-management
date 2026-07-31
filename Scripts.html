@@ -5,7 +5,7 @@
    */
   const App = {
     state: {
-      user: { email: '', role: 'viewer', isSuperAdmin: false, isLoggedIn: false },
+      user: { email: '', role: 'viewer', isLoggedIn: false },
       tournamentRoles: {},  // Per-tournament role cache: { "T001": "organizer", "T002": "referee" }
       currentPage: 'dashboard',
       params: {}
@@ -168,7 +168,6 @@
     },
 
     hasRoleForTournament: function (tournamentId, allowedRoles) {
-      if (App.state.user.isSuperAdmin) return true;
       const role = App.getRoleForTournament(tournamentId);
       return allowedRoles.includes(role);
     },
@@ -205,13 +204,22 @@
       const displayEmail = App.state.user.email || '';
 
       if (displayEmail) {
-        const roleLabel = App.state.user.isSuperAdmin ? 'SUPER ADMIN' : (App.state.user.role || 'viewer');
+        const currentTId = App.state.params ? App.state.params.tournamentId : '';
+        const roleInCurrentT = currentTId ? App.getRoleForTournament(currentTId) : '';
+        const roleLabel = roleInCurrentT || App.state.user.role || 'viewer';
+
+        const roleStyles = {
+          organizer: 'background:linear-gradient(135deg,#6366f1,#8b5cf6); color:#fff;',
+          referee: 'background:linear-gradient(135deg,#10b981,#059669); color:#fff;',
+          player: 'background:linear-gradient(135deg,#f59e0b,#d97706); color:#fff;',
+          viewer: 'background:rgba(255,255,255,0.1); color:#94a3b8;'
+        };
         
         userEl.innerHTML = `
           <div style="display:flex; align-items:center; gap:0.5rem;">
             👤
             <span style="font-weight:600;">${displayEmail}</span>
-            <span class="user-badge" style="${App.state.user.isSuperAdmin ? 'background:linear-gradient(135deg,#f59e0b,#ef4444); color:#fff;' : ''}">${roleLabel}</span>
+            <span class="user-badge" style="${roleStyles[roleLabel] || roleStyles.viewer}">${roleLabel}</span>
           </div>
         `;
       } else {

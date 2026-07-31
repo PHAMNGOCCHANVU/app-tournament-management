@@ -63,8 +63,8 @@ class TournamentService {
   /**
    * Update Tournament details
    */
-  updateTournament(tournamentId, data, clientEmail) {
-    getAuthService().checkPermission(tournamentId, ['organizer'], clientEmail);
+  updateTournament(tournamentId, data) {
+    getAuthService().checkPermission(tournamentId, ['organizer']);
 
     const existing = this.tournamentRepo.getById(tournamentId);
     if (!existing) throw new Error('Không tìm thấy giải đấu.');
@@ -84,8 +84,8 @@ class TournamentService {
   /**
    * Delete Tournament (Only allowed in 'draft' status)
    */
-  deleteTournament(tournamentId, clientEmail) {
-    getAuthService().checkPermission(tournamentId, ['organizer'], clientEmail);
+  deleteTournament(tournamentId) {
+    getAuthService().checkPermission(tournamentId, ['organizer']);
 
     const existing = this.tournamentRepo.getById(tournamentId);
     if (!existing) throw new Error('Không tìm thấy giải đấu.');
@@ -172,8 +172,8 @@ class TournamentService {
   /**
    * Add a Sport configuration to a Tournament (TournamentSport)
    */
-  addSportToTournament(tournamentId, config, clientEmail) {
-    getAuthService().checkPermission(tournamentId, ['organizer'], clientEmail);
+  addSportToTournament(tournamentId, config) {
+    getAuthService().checkPermission(tournamentId, ['organizer']);
 
     const tsId = generateId('TS');
     const newTS = {
@@ -198,8 +198,8 @@ class TournamentService {
   /**
    * Update Tournament Status Lifecycle
    */
-  updateStatus(tournamentId, newStatus, clientEmail) {
-    getAuthService().checkPermission(tournamentId, ['organizer'], clientEmail);
+  updateStatus(tournamentId, newStatus) {
+    getAuthService().checkPermission(tournamentId, ['organizer']);
 
     const validStatuses = ['draft', 'open', 'in_progress', 'completed', 'cancelled'];
     if (!validStatuses.includes(newStatus)) {
@@ -240,12 +240,12 @@ function apiCreateTournament(data) {
   return getTournamentService().createTournament(data);
 }
 
-function apiUpdateTournament(tournamentId, data, clientEmail) {
-  return getTournamentService().updateTournament(tournamentId, data, clientEmail);
+function apiUpdateTournament(tournamentId, data) {
+  return getTournamentService().updateTournament(tournamentId, data);
 }
 
-function apiDeleteTournament(tournamentId, clientEmail) {
-  return getTournamentService().deleteTournament(tournamentId, clientEmail);
+function apiDeleteTournament(tournamentId) {
+  return getTournamentService().deleteTournament(tournamentId);
 }
 
 function apiGetTournamentList(filters) {
@@ -256,12 +256,12 @@ function apiGetTournamentById(tournamentId) {
   return getTournamentService().getTournamentById(tournamentId);
 }
 
-function apiAddSportToTournament(tournamentId, config, clientEmail) {
-  return getTournamentService().addSportToTournament(tournamentId, config, clientEmail);
+function apiAddSportToTournament(tournamentId, config) {
+  return getTournamentService().addSportToTournament(tournamentId, config);
 }
 
-function apiUpdateTournamentStatus(tournamentId, newStatus, clientEmail) {
-  return getTournamentService().updateStatus(tournamentId, newStatus, clientEmail);
+function apiUpdateTournamentStatus(tournamentId, newStatus) {
+  return getTournamentService().updateStatus(tournamentId, newStatus);
 }
 
 function apiGetAllSports() {
@@ -271,14 +271,9 @@ function apiGetAllSports() {
 /**
  * High-Performance Single Round-Trip Bundle API for Tournament Management Room
  */
-function apiGetTournamentManageBundle(tournamentId, clientEmail) {
+function apiGetTournamentManageBundle(tournamentId) {
   const auth = getAuthService();
-  let email = auth.getCurrentUserEmail();
-  if (!email && clientEmail) {
-    email = String(clientEmail).toLowerCase().trim();
-  }
-
-  const authContext = apiGetAuthContext(tournamentId, email);
+  const authContext = apiGetAuthContext(tournamentId);
   const tournament = getTournamentService().getTournamentById(tournamentId);
   const assignedRoles = auth.getAssignedRoles(tournamentId);
 
