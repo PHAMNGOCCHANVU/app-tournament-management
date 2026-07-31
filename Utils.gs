@@ -213,12 +213,10 @@ class BaseRepository {
 }
 
 /**
- * Utility: Generate Unique Sequential ID (e.g. T001, M012)
+ * Utility: Generate Unique ID using UUID to prevent collisions
  */
 function generateId(prefix) {
-  const timestamp = new Date().getTime().toString().slice(-5);
-  const random = Math.floor(Math.random() * 90 + 10);
-  return `${prefix}${timestamp}${random}`;
+  return `${prefix}${Utilities.getUuid().replace(/-/g, '').substring(0, 12)}`;
 }
 
 /**
@@ -238,13 +236,6 @@ function formatDate(dateString) {
   } catch (e) {
     return dateString;
   }
-}
-
-/**
- * Utility: Include HTML file contents for template embedding
- */
-function include(filename) {
-  return HtmlService.createHtmlOutputFromFile(filename).getContent();
 }
 
 /**

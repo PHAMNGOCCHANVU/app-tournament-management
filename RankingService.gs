@@ -60,9 +60,9 @@ class RankingService {
     const matches = this.matchRepo.where('ts_id', tsId);
     const completedMatches = matches.filter(m => m.status === 'completed');
 
-    const pointsWin = Number(ts.points_for_win) !== undefined ? Number(ts.points_for_win) : 3;
-    const pointsDraw = Number(ts.points_for_draw) !== undefined ? Number(ts.points_for_draw) : 1;
-    const pointsLoss = Number(ts.points_for_loss) !== undefined ? Number(ts.points_for_loss) : 0;
+    const pointsWin = !isNaN(Number(ts.points_for_win)) ? Number(ts.points_for_win) : 3;
+    const pointsDraw = !isNaN(Number(ts.points_for_draw)) ? Number(ts.points_for_draw) : 1;
+    const pointsLoss = !isNaN(Number(ts.points_for_loss)) ? Number(ts.points_for_loss) : 0;
 
     const teamStats = {};
     approvedTeams.forEach(team => {
@@ -175,12 +175,13 @@ class RankingService {
   }
 }
 
-// Lazy Singleton Helper
+// Singleton Helper (global variable for V8 reliability)
+let _rankingServiceInstance = null;
 function getRankingService() {
-  if (!this._rankingServiceInstance) {
-    this._rankingServiceInstance = new RankingService();
+  if (!_rankingServiceInstance) {
+    _rankingServiceInstance = new RankingService();
   }
-  return this._rankingServiceInstance;
+  return _rankingServiceInstance;
 }
 
 /**

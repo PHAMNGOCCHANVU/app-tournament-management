@@ -90,10 +90,11 @@ class EmailService {
   }
 }
 
-// Lazy Singleton Helper
+// Singleton Helper (global variable for V8 reliability)
+let _emailServiceInstance = null;
 function getEmailService() {
-  if (!this._emailServiceInstance) {
-    this._emailServiceInstance = new EmailService();
+  if (!_emailServiceInstance) {
+    _emailServiceInstance = new EmailService();
   }
-  return this._emailServiceInstance;
+  return _emailServiceInstance;
 }

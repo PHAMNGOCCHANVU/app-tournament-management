@@ -1,0 +1,8 @@
+**/**
+!*.gs
+!appsscript.json
+!*.js
+!*.html
+.git/**
+.gitignore
+README.md

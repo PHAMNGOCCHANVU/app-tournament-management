@@ -1,8 +1,10 @@
 <script>
   /**
    * Schedule & Match List View Controller
+   * Optimized: Uses apiGetSchedulePageBundle for single round-trip data loading
+   * Auth: Uses per-tournament role via App.hasRoleForTournament()
    */
-  App.views.schedule = function(params = {}) {
+  App.views.schedule = function (params = {}) {
     const container = document.getElementById('app-view');
     const selectedTournamentId = params.tournamentId || '';
 
@@ -39,33 +41,68 @@
 
         <!-- Matches Table List -->
         <div id="schedule-matches-container">
-          <div class="loader-center"><div class="spinner"></div><p>Vui lòng chọn giải đấu và môn thi đấu để xem lịch.</p></div>
+          <div class="loader-center"><div class="spinner"></div><p>Đang tải dữ liệu lịch thi đấu...</p></div>
         </div>
       </div>
     `;
 
-    loadScheduleTournaments(selectedTournamentId);
+    // Load everything in 1 bundle call
+    loadScheduleBundle(selectedTournamentId);
   };
 
   let selectedScheduleTournamentId = '';
   let selectedScheduleTsId = '';
   let currentTournamentDetails = null;
 
-  function loadScheduleTournaments(presetTId) {
-    App.server.call('apiGetTournamentList')
-      .then(list => {
+  function loadScheduleBundle(presetTId) {
+    App.server.call('apiGetSchedulePageBundle', presetTId || '', '')
+      .then(bundle => {
+        if (!bundle) return;
+
+        // Populate tournament dropdown
         const select = document.getElementById('sched-tournament-select');
         if (!select) return;
-
+        const list = bundle.tournamentList || [];
         select.innerHTML = `<option value="">-- Chọn Giải Đấu --</option>` + 
-          (list || []).map(t => `<option value="${t.tournament_id}" ${t.tournament_id === presetTId ? 'selected' : ''}>${t.name}</option>`).join('');
+          list.map(t => `<option value="${t.tournament_id}" ${t.tournament_id === presetTId ? 'selected' : ''}>${t.name}</option>`).join('');
 
-        if (presetTId) {
-          onScheduleTournamentChange();
-        } else if (list && list.length > 0) {
+        // Update auth context & cache per-tournament role
+        if (bundle.authContext) {
+          App.state.user = Object.assign({}, App.state.user, bundle.authContext);
+          if (presetTId) {
+            App.setTournamentRole(presetTId, bundle.authContext.role);
+          }
+          App.updateUserBadge();
+        }
+
+        // Populate sport dropdown & matches
+        if (bundle.tournament) {
+          currentTournamentDetails = bundle.tournament;
+          selectedScheduleTournamentId = bundle.tournament.tournament_id;
+
+          const tsSelect = document.getElementById('sched-ts-select');
+          if (bundle.tournament.sports && bundle.tournament.sports.length > 0) {
+            tsSelect.innerHTML = bundle.tournament.sports.map(s => 
+              `<option value="${s.ts_id}">${s.sport_name} (${s.format === 'round_robin' ? 'Vòng tròn' : 'Loại trực tiếp'})</option>`
+            ).join('');
+            selectedScheduleTsId = bundle.tournament.sports[0].ts_id;
+          }
+
+          renderScheduleMatchesList(bundle.matches || []);
+        } else if (list.length > 0 && !presetTId) {
+          // Auto-select first tournament if none specified
           select.value = list[0].tournament_id;
           onScheduleTournamentChange();
+        } else {
+          document.getElementById('schedule-matches-container').innerHTML = `
+            <div class="card" style="text-align:center; padding:3rem;">
+              <p style="color:var(--text-muted); font-size:1.1rem;">Vui lòng chọn giải đấu để xem lịch thi đấu.</p>
+            </div>`;
         }
+      })
+      .catch(err => {
+        document.getElementById('schedule-matches-container').innerHTML = `
+          <div class="card"><p style="color:var(--danger);">Lỗi tải dữ liệu: ${err.message}</p></div>`;
       });
   }
 
@@ -73,30 +110,32 @@
     selectedScheduleTournamentId = document.getElementById('sched-tournament-select').value;
     const tsSelect = document.getElementById('sched-ts-select');
     tsSelect.innerHTML = `<option value="">-- Chọn Môn Thi Đấu --</option>`;
+    document.getElementById('schedule-matches-container').innerHTML = `<div class="loader-center"><div class="spinner"></div><p>Đang tải...</p></div>`;
 
     if (!selectedScheduleTournamentId) return;
 
-    const clientEmail = App.state.user.email || localStorage.getItem('user_email') || '';
+    // Use bundle API for tournament change too (1 call instead of 3)
+    App.server.call('apiGetSchedulePageBundle', selectedScheduleTournamentId, '')
+      .then(bundle => {
+        if (!bundle) return;
 
-    // Refresh role context for the selected tournament
-    App.server.call('apiGetAuthContext', selectedScheduleTournamentId, clientEmail)
-      .then(res => {
-        if (res) {
-          App.state.user = res;
+        if (bundle.authContext) {
+          App.state.user = Object.assign({}, App.state.user, bundle.authContext);
+          App.setTournamentRole(selectedScheduleTournamentId, bundle.authContext.role);
           App.updateUserBadge();
         }
-      });
 
-    App.server.call('apiGetTournamentById', selectedScheduleTournamentId)
-      .then(t => {
-        if (!t) return;
-        currentTournamentDetails = t;
-
-        if (!t.sports || t.sports.length === 0) return;
-        
-        tsSelect.innerHTML = t.sports.map(s => `<option value="${s.ts_id}">${s.sport_name} (${s.format === 'round_robin' ? 'Vòng tròn' : 'Loại trực tiếp'})</option>`).join('');
-        selectedScheduleTsId = t.sports[0].ts_id;
-        onScheduleTsChange();
+        if (bundle.tournament) {
+          currentTournamentDetails = bundle.tournament;
+          const tsSelect = document.getElementById('sched-ts-select');
+          if (bundle.tournament.sports && bundle.tournament.sports.length > 0) {
+            tsSelect.innerHTML = bundle.tournament.sports.map(s => 
+              `<option value="${s.ts_id}">${s.sport_name} (${s.format === 'round_robin' ? 'Vòng tròn' : 'Loại trực tiếp'})</option>`
+            ).join('');
+            selectedScheduleTsId = bundle.tournament.sports[0].ts_id;
+          }
+          renderScheduleMatchesList(bundle.matches || []);
+        }
       });
   }
 
@@ -139,11 +178,12 @@
     });
 
     const isLocked = currentTournamentDetails && ['completed', 'cancelled'].includes(currentTournamentDetails.status);
-    const isRefOrOrg = ['organizer', 'referee'].includes(App.state.user.role);
+    // FIX: Use per-tournament role instead of global App.state.user.role
+    const isRefOrOrg = App.hasRoleForTournament(selectedScheduleTournamentId, ['organizer', 'referee']);
 
     container.innerHTML = Object.keys(roundGroups).map(rName => `
       <div class="card" style="margin-bottom:1.5rem;">
-        <div style="display:flex; justify-space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:0.5rem; margin-bottom:1rem;">
+        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:0.5rem; margin-bottom:1rem;">
           <h3 style="color:var(--primary); margin:0;">${rName}</h3>
           ${isLocked ? `<span class="badge badge-completed">🔒 Đã khóa (Chỉ xem)</span>` : ''}
         </div>

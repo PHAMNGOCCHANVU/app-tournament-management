@@ -33,6 +33,7 @@
 
         if (bundle.authContext) {
           App.state.user = Object.assign({}, App.state.user, bundle.authContext);
+          App.setTournamentRole(tournamentId, bundle.authContext.role);
           App.updateUserBadge();
         }
 

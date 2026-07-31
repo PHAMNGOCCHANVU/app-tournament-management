@@ -1,6 +1,7 @@
 <script>
   /**
    * Standings & Ranking View Controller
+   * Optimized: Uses apiGetRankingPageBundle for single round-trip data loading
    */
   App.views.ranking = function(params = {}) {
     const container = document.getElementById('app-view');
@@ -35,32 +36,54 @@
 
         <!-- Rankings Table Panel -->
         <div id="rankings-table-container">
-          <div class="loader-center"><div class="spinner"></div><p>Vui lòng chọn giải đấu và môn thi đấu.</p></div>
+          <div class="loader-center"><div class="spinner"></div><p>Đang tải bảng xếp hạng...</p></div>
         </div>
       </div>
     `;
 
-    loadRankingTournaments(selectedTournamentId);
+    // Load everything in 1 bundle call
+    loadRankingBundle(selectedTournamentId);
   };
 
   let selectedRankingTournamentId = '';
   let selectedRankingTsId = '';
 
-  function loadRankingTournaments(presetTId) {
-    App.server.call('apiGetTournamentList')
-      .then(list => {
+  function loadRankingBundle(presetTId) {
+    App.server.call('apiGetRankingPageBundle', presetTId || '', '')
+      .then(bundle => {
+        if (!bundle) return;
+
         const select = document.getElementById('rank-tournament-select');
         if (!select) return;
+        const list = bundle.tournamentList || [];
+        select.innerHTML = `<option value="">-- Chọn Giải Đấu --</option>` +
+          list.map(t => `<option value="${t.tournament_id}" ${t.tournament_id === presetTId ? 'selected' : ''}>${t.name}</option>`).join('');
 
-        select.innerHTML = `<option value="">-- Chọn Giải Đấu --</option>` + 
-          (list || []).map(t => `<option value="${t.tournament_id}" ${t.tournament_id === presetTId ? 'selected' : ''}>${t.name}</option>`).join('');
+        if (bundle.tournament) {
+          selectedRankingTournamentId = bundle.tournament.tournament_id;
 
-        if (presetTId) {
-          onRankingTournamentChange();
-        } else if (list && list.length > 0) {
+          const tsSelect = document.getElementById('rank-ts-select');
+          if (bundle.tournament.sports && bundle.tournament.sports.length > 0) {
+            tsSelect.innerHTML = bundle.tournament.sports.map(s =>
+              `<option value="${s.ts_id}">${s.sport_name}</option>`
+            ).join('');
+            selectedRankingTsId = bundle.tournament.sports[0].ts_id;
+          }
+
+          renderRankingsTable(bundle.rankings || []);
+        } else if (list.length > 0 && !presetTId) {
           select.value = list[0].tournament_id;
           onRankingTournamentChange();
+        } else {
+          document.getElementById('rankings-table-container').innerHTML = `
+            <div class="card" style="text-align:center; padding:3rem;">
+              <p style="color:var(--text-muted); font-size:1.1rem;">Vui lòng chọn giải đấu.</p>
+            </div>`;
         }
+      })
+      .catch(err => {
+        document.getElementById('rankings-table-container').innerHTML = `
+          <div class="card"><p style="color:var(--danger);">Lỗi tải dữ liệu: ${err.message}</p></div>`;
       });
   }
 
@@ -68,16 +91,24 @@
     selectedRankingTournamentId = document.getElementById('rank-tournament-select').value;
     const tsSelect = document.getElementById('rank-ts-select');
     tsSelect.innerHTML = `<option value="">-- Chọn Môn Thi Đấu --</option>`;
+    document.getElementById('rankings-table-container').innerHTML = `<div class="loader-center"><div class="spinner"></div><p>Đang tải...</p></div>`;
 
     if (!selectedRankingTournamentId) return;
 
-    App.server.call('apiGetTournamentById', selectedRankingTournamentId)
-      .then(t => {
-        if (!t || !t.sports || t.sports.length === 0) return;
-        
-        tsSelect.innerHTML = t.sports.map(s => `<option value="${s.ts_id}">${s.sport_name}</option>`).join('');
-        selectedRankingTsId = t.sports[0].ts_id;
-        onRankingTsChange();
+    // Use bundle API for tournament change (1 call instead of 2)
+    App.server.call('apiGetRankingPageBundle', selectedRankingTournamentId, '')
+      .then(bundle => {
+        if (!bundle || !bundle.tournament) return;
+
+        const tsSelect = document.getElementById('rank-ts-select');
+        if (bundle.tournament.sports && bundle.tournament.sports.length > 0) {
+          tsSelect.innerHTML = bundle.tournament.sports.map(s =>
+            `<option value="${s.ts_id}">${s.sport_name}</option>`
+          ).join('');
+          selectedRankingTsId = bundle.tournament.sports[0].ts_id;
+        }
+
+        renderRankingsTable(bundle.rankings || []);
       });
   }
 

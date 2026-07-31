@@ -211,12 +211,13 @@ class TeamService {
   }
 }
 
-// Lazy Singleton Helper
+// Singleton Helper (global variable for V8 reliability)
+let _teamServiceInstance = null;
 function getTeamService() {
-  if (!this._teamServiceInstance) {
-    this._teamServiceInstance = new TeamService();
+  if (!_teamServiceInstance) {
+    _teamServiceInstance = new TeamService();
   }
-  return this._teamServiceInstance;
+  return _teamServiceInstance;
 }
 
 /**

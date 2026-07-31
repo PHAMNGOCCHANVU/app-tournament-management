@@ -373,12 +373,13 @@ class MatchService {
   }
 }
 
-// Lazy Singleton Helper
+// Singleton Helper (global variable for V8 reliability)
+let _matchServiceInstance = null;
 function getMatchService() {
-  if (!this._matchServiceInstance) {
-    this._matchServiceInstance = new MatchService();
+  if (!_matchServiceInstance) {
+    _matchServiceInstance = new MatchService();
   }
-  return this._matchServiceInstance;
+  return _matchServiceInstance;
 }
 
 /**

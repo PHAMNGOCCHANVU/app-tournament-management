@@ -195,25 +195,22 @@ class AuthService {
   }
 }
 
-// Lazy Singleton Helper
+// Singleton Helper (global variable for V8 reliability)
+let _authServiceInstance = null;
 function getAuthService() {
-  if (!this._authServiceInstance) {
-    this._authServiceInstance = new AuthService();
+  if (!_authServiceInstance) {
+    _authServiceInstance = new AuthService();
   }
-  return this._authServiceInstance;
+  return _authServiceInstance;
 }
 
 /**
  * Server Exposed APIs for Client
  */
-function apiGetAuthContext(tournamentId, clientEmail) {
+function apiGetAuthContext(tournamentId) {
   const auth = getAuthService();
-  let email = auth.getCurrentUserEmail();
+  const email = auth.getCurrentUserEmail();
   const superAdminEmail = auth.getSystemAdminEmail();
-  
-  if (!email && clientEmail) {
-    email = String(clientEmail).toLowerCase().trim();
-  }
 
   const isSuperAdmin = (superAdminEmail && email === superAdminEmail);
   const role = auth.getUserRole(tournamentId, email);

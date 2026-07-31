@@ -183,9 +183,9 @@ class TournamentService {
       format: config.format || 'round_robin',
       max_teams: Number(config.max_teams) || 8,
       min_teams: Number(config.min_teams) || 2,
-      points_for_win: Number(config.points_for_win) !== undefined ? Number(config.points_for_win) : 3,
-      points_for_draw: Number(config.points_for_draw) !== undefined ? Number(config.points_for_draw) : 1,
-      points_for_loss: Number(config.points_for_loss) !== undefined ? Number(config.points_for_loss) : 0,
+      points_for_win: !isNaN(Number(config.points_for_win)) ? Number(config.points_for_win) : 3,
+      points_for_draw: !isNaN(Number(config.points_for_draw)) ? Number(config.points_for_draw) : 1,
+      points_for_loss: !isNaN(Number(config.points_for_loss)) ? Number(config.points_for_loss) : 0,
       num_groups: Number(config.num_groups) || 1,
       teams_advance_per_group: Number(config.teams_advance_per_group) || 2,
       registration_deadline: config.registration_deadline || '',
@@ -224,12 +224,13 @@ class TournamentService {
   }
 }
 
-// Lazy Singleton Helper
+// Singleton Helper (global variable for V8 reliability)
+let _tournamentServiceInstance = null;
 function getTournamentService() {
-  if (!this._tournamentServiceInstance) {
-    this._tournamentServiceInstance = new TournamentService();
+  if (!_tournamentServiceInstance) {
+    _tournamentServiceInstance = new TournamentService();
   }
-  return this._tournamentServiceInstance;
+  return _tournamentServiceInstance;
 }
 
 /**
