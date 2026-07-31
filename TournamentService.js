@@ -294,3 +294,87 @@ function apiGetTournamentManageBundle(tournamentId, clientEmail) {
     firstTsTeams: firstTsTeams
   };
 }
+
+/**
+ * High-Performance Bundle API for Schedule Page (1 server call instead of 4)
+ */
+function apiGetSchedulePageBundle(tournamentId, tsId) {
+  const auth = getAuthService();
+  const email = auth.getCurrentUserEmail();
+
+  const tournamentList = getTournamentService().getTournamentList();
+  
+  let authContext = null;
+  let tournament = null;
+  let matches = [];
+
+  if (tournamentId) {
+    authContext = apiGetAuthContext(tournamentId, email);
+    tournament = getTournamentService().getTournamentById(tournamentId);
+    
+    // Load matches for the specified or first sport
+    const targetTsId = tsId || (tournament && tournament.sports && tournament.sports.length > 0 ? tournament.sports[0].ts_id : '');
+    if (targetTsId) {
+      matches = getMatchService().getMatchesByTournamentSport(targetTsId);
+    }
+  }
+
+  return {
+    tournamentList: tournamentList,
+    authContext: authContext,
+    tournament: tournament,
+    matches: matches
+  };
+}
+
+/**
+ * High-Performance Bundle API for Ranking Page (1 server call instead of 3)
+ */
+function apiGetRankingPageBundle(tournamentId, tsId) {
+  const tournamentList = getTournamentService().getTournamentList();
+  
+  let tournament = null;
+  let rankings = [];
+
+  if (tournamentId) {
+    tournament = getTournamentService().getTournamentById(tournamentId);
+    
+    const targetTsId = tsId || (tournament && tournament.sports && tournament.sports.length > 0 ? tournament.sports[0].ts_id : '');
+    if (targetTsId) {
+      rankings = getRankingService().getRankingsByTournamentSport(targetTsId);
+    }
+  }
+
+  return {
+    tournamentList: tournamentList,
+    tournament: tournament,
+    rankings: rankings
+  };
+}
+
+/**
+ * High-Performance Bundle API for Bracket Page (1 server call instead of 3)
+ */
+function apiGetBracketPageBundle(tournamentId, tsId) {
+  const tournamentList = getTournamentService().getTournamentList();
+  
+  let tournament = null;
+  let matches = [];
+
+  if (tournamentId) {
+    tournament = getTournamentService().getTournamentById(tournamentId);
+    
+    const targetTsId = tsId || (tournament && tournament.sports && tournament.sports.length > 0 
+      ? (tournament.sports.find(s => s.format === 'single_elimination') || tournament.sports[0]).ts_id 
+      : '');
+    if (targetTsId) {
+      matches = getMatchService().getMatchesByTournamentSport(targetTsId);
+    }
+  }
+
+  return {
+    tournamentList: tournamentList,
+    tournament: tournament,
+    matches: matches
+  };
+}
