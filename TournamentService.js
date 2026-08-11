@@ -180,12 +180,24 @@ class TournamentService {
       ts_id: tsId,
       tournament_id: tournamentId,
       sport_id: config.sport_id,
+
+      // V3: Category / Skill Level / Access Mode
+      category: config.category || 'open',
+      skill_level: config.skill_level || '',
+      access_mode: config.access_mode || 'open',
+
       format: config.format || 'round_robin',
       max_teams: Number(config.max_teams) || 8,
       min_teams: Number(config.min_teams) || 2,
-      points_for_win: !isNaN(Number(config.points_for_win)) ? Number(config.points_for_win) : 3,
-      points_for_draw: !isNaN(Number(config.points_for_draw)) ? Number(config.points_for_draw) : 1,
-      points_for_loss: !isNaN(Number(config.points_for_loss)) ? Number(config.points_for_loss) : 0,
+      points_for_win: !isNaN(Number(config.points_for_win))
+        ? Number(config.points_for_win)
+        : 3,
+      points_for_draw: !isNaN(Number(config.points_for_draw))
+        ? Number(config.points_for_draw)
+        : 1,
+      points_for_loss: !isNaN(Number(config.points_for_loss))
+        ? Number(config.points_for_loss)
+        : 0,
       num_groups: Number(config.num_groups) || 1,
       teams_advance_per_group: Number(config.teams_advance_per_group) || 2,
       registration_deadline: config.registration_deadline || '',

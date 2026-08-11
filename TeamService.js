@@ -87,14 +87,22 @@ class TeamService {
     // Save team players roster
     playersList.forEach((p, idx) => {
       const playerId = generateId('P');
+
       this.playerRepo.insert({
         player_id: playerId,
         team_id: teamId,
         name: p.name || `Thành viên ${idx + 1}`,
         email: p.email || (idx === 0 ? captainEmail : ''),
         phone: p.phone || '',
+
+        // V3: Player information
+        gender: p.gender || '',
         jersey_number: p.jersey_number || (idx + 1),
-        role_in_team: idx === 0 ? 'captain' : (p.role_in_team || 'player')
+        position: p.position || '',
+
+        role_in_team: idx === 0
+          ? 'captain'
+          : (p.role_in_team || 'player')
       });
     });
 

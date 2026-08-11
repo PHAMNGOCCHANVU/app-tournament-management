@@ -5,15 +5,149 @@
 
 // Global Sheet Schema Definition
 const SCHEMAS = {
-  Tournament: ['tournament_id', 'name', 'description', 'start_date', 'end_date', 'location', 'organizer_email', 'status', 'created_at', 'updated_at'],
-  Sport: ['sport_id', 'name', 'type', 'min_players_per_team', 'max_players_per_team', 'scoring_type', 'description'],
-  TournamentSport: ['ts_id', 'tournament_id', 'sport_id', 'format', 'max_teams', 'min_teams', 'points_for_win', 'points_for_draw', 'points_for_loss', 'num_groups', 'teams_advance_per_group', 'registration_deadline', 'status'],
-  Team: ['team_id', 'ts_id', 'name', 'captain_email', 'registration_date', 'status', 'group_name', 'seed'],
-  Player: ['player_id', 'team_id', 'name', 'email', 'phone', 'jersey_number', 'role_in_team'],
-  Match: ['match_id', 'ts_id', 'round', 'round_name', 'group_name', 'team1_id', 'team2_id', 'team1_score', 'team2_score', 'winner_team_id', 'match_date', 'location', 'status', 'notes', 'updated_by', 'updated_at'],
-  Ranking: ['ranking_id', 'ts_id', 'team_id', 'group_name', 'played', 'won', 'drawn', 'lost', 'goals_for', 'goals_against', 'goal_difference', 'points', 'rank'],
-  User: ['user_id', 'email', 'display_name', 'created_at'],
-  TournamentRole: ['role_id', 'tournament_id', 'user_email', 'role', 'assigned_at', 'assigned_by']
+  Tournament: [
+    'tournament_id',
+    'name',
+    'description',
+    'start_date',
+    'end_date',
+    'location',
+    'organizer_email',
+    'status',
+    'created_at',
+    'updated_at'
+  ],
+
+  Sport: [
+    'sport_id',
+    'name',
+    'type',
+    'category',
+    'skill_levels',
+    'min_players_per_team',
+    'max_players_per_team',
+    'scoring_type',
+    'description'
+  ],
+
+  TournamentSport: [
+    'ts_id',
+    'tournament_id',
+    'sport_id',
+    'format',
+    'category',
+    'skill_level',
+    'access_mode',
+    'max_teams',
+    'min_teams',
+    'points_for_win',
+    'points_for_draw',
+    'points_for_loss',
+    'num_groups',
+    'teams_advance_per_group',
+    'registration_deadline',
+    'status'
+  ],
+
+  Team: [
+    'team_id',
+    'ts_id',
+    'name',
+    'captain_email',
+    'registration_date',
+    'status',
+    'group_name',
+    'seed'
+  ],
+
+  Player: [
+    'player_id',
+    'team_id',
+    'name',
+    'email',
+    'phone',
+    'gender',
+    'jersey_number',
+    'position',
+    'role_in_team'
+  ],
+
+  Match: [
+    'match_id',
+    'ts_id',
+    'round',
+    'round_name',
+    'group_name',
+    'team1_id',
+    'team2_id',
+    'team1_score',
+    'team2_score',
+    'winner_team_id',
+    'match_date',
+    'location',
+    'status',
+    'notes',
+    'updated_by',
+    'updated_at'
+  ],
+
+  Ranking: [
+    'ranking_id',
+    'ts_id',
+    'team_id',
+    'group_name',
+    'played',
+    'won',
+    'drawn',
+    'lost',
+    'goals_for',
+    'goals_against',
+    'goal_difference',
+    'points',
+    'rank'
+  ],
+
+  User: [
+    'user_id',
+    'email',
+    'display_name',
+    'picture_url',
+    'system_role',
+    'status',
+    'approved_by',
+    'approved_at',
+    'created_at',
+    'updated_at'
+  ],
+
+  TournamentRole: [
+    'role_id',
+    'tournament_id',
+    'user_email',
+    'role',
+    'assigned_at',
+    'assigned_by'
+  ],
+
+  SystemConfig: [
+    'config_id',
+    'config_key',
+    'config_value',
+    'description',
+    'updated_by',
+    'updated_at'
+  ],
+
+  AuditLog: [
+    'log_id',
+    'timestamp',
+    'user_email',
+    'action',
+    'resource_type',
+    'resource_id',
+    'details',
+    'ip_address'
+  ]
 };
 
 // Global In-Memory Cache Store for current execution context
