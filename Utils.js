@@ -174,7 +174,7 @@ class BaseRepository {
    * Get active Spreadsheet instance
    */
   getSpreadsheet() {
-    return SpreadsheetApp.getActiveSpreadsheet();
+    return SpreadsheetApp.openById('1FjVNb0yd4RIYv--LGTqIrZ-41C5blb775QYZo8qWjzA')
   }
 
   /**
@@ -376,7 +376,7 @@ function formatDate(dateString) {
  * Setup Database: Initialize all 9 sheets with headers and Seed Data
  */
 function setupDatabase() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ss = SpreadsheetApp.openById('1FjVNb0yd4RIYv--LGTqIrZ-41C5blb775QYZo8qWjzA');
   
   Object.keys(SCHEMAS).forEach(sheetName => {
     let sheet = ss.getSheetByName(sheetName);
