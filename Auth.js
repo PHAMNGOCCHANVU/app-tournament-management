@@ -1,8 +1,38 @@
 /**
- * Auth.js - Pure Tournament-Scoped Role-Based Access Control (RBAC)
- * Vai trò ở cấp hệ thống: Mọi tài khoản Google đều bình đẳng
- * Vai trò ở cấp giải đấu: Organizer (Người tạo giải), Referee (Trọng tài), Player (VĐV), Viewer (Người xem)
+ * Auth.js - Tournament-Scoped RBAC (Phase 1)
+ *
+ * Note:
+ * - Mục tiêu của Phase 1 chỉ là hoàn thiện quyền ở cấp giải đấu theo tài liệu AS04.
+ * - Theo AS04, 5 vai trò được định nghĩa rõ: organizer, editor, referee, player, viewer.
+ * - Permission matrix dưới đây giữ ở mức conservative, vì tài liệu không mô tả chi tiết
+ *   quyền từng role với từng action ở mọi trường hợp. Khi không rõ, ưu tiên deny.
  */
+
+const TOURNAMENT_ROLE_PERMISSIONS = {
+  organizer: [
+    'view_tournament',
+    'edit_tournament',
+    'assign_role',
+    'approve_registration',
+    'reject_registration',
+    'update_match_result',
+    'delete_tournament'
+  ],
+  editor: [
+    'view_tournament',
+    'edit_tournament'
+  ],
+  referee: [
+    'view_tournament',
+    'update_match_result'
+  ],
+  player: [
+    'view_tournament'
+  ],
+  viewer: [
+    'view_tournament'
+  ]
+};
 
 class AuthService {
   get userRepo() { return new BaseRepository('User', 'user_id'); }
@@ -10,6 +40,13 @@ class AuthService {
   get tournamentRepo() { return new BaseRepository('Tournament', 'tournament_id'); }
   get teamRepo() { return new BaseRepository('Team', 'team_id'); }
   get playerRepo() { return new BaseRepository('Player', 'player_id'); }
+
+  /**
+   * Central permission matrix for tournament-level RBAC.
+   */
+  get permissionMatrix() {
+    return TOURNAMENT_ROLE_PERMISSIONS;
+  }
 
   /**
    * Get active user email from session
@@ -47,100 +84,147 @@ class AuthService {
   }
 
   /**
-   * Xác định vai trò duy nhất theo Giải đấu (Tournament-Scoped RBAC)
+   * Xác định vai trò duy nhất theo giải đấu.
+   * Quy tắc ưu tiên:
+   * 1. Organizer nếu email khớp tournament.organizer_email
+   * 2. Explicit role từ TournamentRole nếu có
+   * 3. Player chỉ khi user thuộc team của giải đã được approved
+   * 4. Mặc định là viewer
    */
   getUserRole(tournamentId, userEmail) {
     const email = (userEmail || this.getCurrentUserEmail()).toLowerCase().trim();
     if (!email || !tournamentId) return 'viewer';
 
-    // 1. Kiểm tra nếu là Người tạo giải đấu
     const tournament = this.tournamentRepo.getById(tournamentId);
     if (tournament && String(tournament.organizer_email).toLowerCase().trim() === email) {
       return 'organizer';
     }
 
-    // 2. Kiểm tra vai trò được gán tường minh trong sheet TournamentRole (VD: referee)
-    const roleRecord = this.roleRepo.findOne(r => 
-      String(r.tournament_id) === String(tournamentId) && 
+    const roleRecord = this.roleRepo.findOne(r =>
+      String(r.tournament_id) === String(tournamentId) &&
       String(r.user_email).toLowerCase().trim() === email
     );
     if (roleRecord) {
-      return roleRecord.role;
+      const normalizedRole = String(roleRecord.role || '').toLowerCase().trim();
+      if (['organizer', 'editor', 'referee', 'player', 'viewer'].includes(normalizedRole)) {
+        return normalizedRole;
+      }
     }
 
-    // 3. Kiểm tra vai trò VĐV / Đội trưởng trong các đội đã duyệt của giải
     const tsRepo = new BaseRepository('TournamentSport', 'ts_id');
     const tournamentSports = tsRepo.where('tournament_id', tournamentId);
     const tsIds = tournamentSports.map(ts => ts.ts_id);
-
     const allTeams = this.teamRepo.getAll();
-    const userTeams = allTeams.filter(t => tsIds.includes(t.ts_id));
-    const teamIds = userTeams.map(t => t.team_id);
+    const candidateTeams = allTeams.filter(t =>
+      tsIds.includes(t.ts_id) &&
+      String(t.status || '').toLowerCase() === 'approved'
+    );
 
-    if (teamIds.length > 0) {
-      const isCaptain = userTeams.some(t => String(t.captain_email).toLowerCase().trim() === email);
-      if (isCaptain) return 'player';
+    if (candidateTeams.length > 0) {
+      const isApprovedPlayer = candidateTeams.some(team => {
+        const captainMatch = String(team.captain_email || '').toLowerCase().trim() === email;
+        if (captainMatch) return true;
 
-      const playerMatch = this.playerRepo.findOne(p => 
-        teamIds.includes(p.team_id) && String(p.email).toLowerCase().trim() === email
-      );
-      if (playerMatch) return 'player';
+        return this.playerRepo.findOne(p =>
+          String(p.team_id) === String(team.team_id) &&
+          String(p.email || '').toLowerCase().trim() === email
+        ) !== null;
+      });
+
+      if (isApprovedPlayer) {
+        return 'player';
+      }
     }
 
     return 'viewer';
   }
 
   /**
-   * Gán vai trò cho người dùng trong giải đấu (Chỉ Organizer của giải đó mới có quyền)
+   * Gán vai trò cho người dùng trong giải đấu.
+   * Chỉ cho phép: editor, referee, player.
+   * viewer và organizer không được gán thông qua TournamentRole.
    */
   assignRole(tournamentId, targetEmail, role, assignedBy) {
-    if (!['organizer', 'referee', 'player'].includes(role)) {
-      throw new Error('Vai trò không hợp lệ: ' + role);
+    const normalizedRole = String(role || '').toLowerCase().trim();
+    if (!['editor', 'referee', 'player'].includes(normalizedRole)) {
+      throw new Error('Vai trò không hợp lệ cho TournamentRole: ' + role + '. Chỉ cho phép editor, referee, player.');
     }
-    const cleanEmail = targetEmail.toLowerCase().trim();
 
-    const existing = this.roleRepo.findOne(r => 
-      String(r.tournament_id) === String(tournamentId) && 
+    const currentEmail = this.getCurrentUserEmail();
+    if (!currentEmail) {
+      throw new Error('Bạn chưa đăng nhập để thực hiện gán quyền.');
+    }
+
+    this.checkAction(tournamentId, 'assign_role');
+
+    const cleanEmail = String(targetEmail || '').toLowerCase().trim();
+    if (!cleanEmail) {
+      throw new Error('Email người nhận vai trò không hợp lệ.');
+    }
+
+    const tournament = this.tournamentRepo.getById(tournamentId);
+    if (tournament && String(tournament.organizer_email || '').toLowerCase().trim() === cleanEmail) {
+      throw new Error('Không thể gán vai trò organizer qua TournamentRole; organizer được xác định từ tournament.organizer_email.');
+    }
+
+    const existing = this.roleRepo.findOne(r =>
+      String(r.tournament_id) === String(tournamentId) &&
       String(r.user_email).toLowerCase().trim() === cleanEmail
     );
 
     if (existing) {
       return this.roleRepo.update(existing.role_id, {
-        role: role,
+        role: normalizedRole,
         assigned_at: new Date().toISOString(),
-        assigned_by: assignedBy
+        assigned_by: assignedBy || currentEmail
       });
-    } else {
-      const newRole = {
-        role_id: generateId('TR'),
-        tournament_id: tournamentId,
-        user_email: cleanEmail,
-        role: role,
-        assigned_at: new Date().toISOString(),
-        assigned_by: assignedBy
-      };
-      return this.roleRepo.insert(newRole);
     }
+
+    const newRole = {
+      role_id: generateId('TR'),
+      tournament_id: tournamentId,
+      user_email: cleanEmail,
+      role: normalizedRole,
+      assigned_at: new Date().toISOString(),
+      assigned_by: assignedBy || currentEmail
+    };
+    return this.roleRepo.insert(newRole);
   }
 
   /**
-   * Thu hồi vai trò người dùng trong giải đấu
+   * Thu hồi vai trò người dùng trong giải đấu.
+   * Không cho phép thu hồi organizer hoặc viewer thông qua TournamentRole.
    */
   revokeRole(tournamentId, targetEmail, role, revokedBy) {
-    const cleanEmail = targetEmail.toLowerCase().trim();
-    
+    const normalizedRole = String(role || '').toLowerCase().trim();
+    if (normalizedRole && !['editor', 'referee', 'player'].includes(normalizedRole)) {
+      throw new Error('Vai trò không hợp lệ để thu hồi: ' + role + '. Chỉ cho phép editor, referee, player.');
+    }
+
+    const currentEmail = this.getCurrentUserEmail();
+    if (!currentEmail) {
+      throw new Error('Bạn chưa đăng nhập để thực hiện thu hồi quyền.');
+    }
+
+    this.checkAction(tournamentId, 'assign_role');
+
+    const cleanEmail = String(targetEmail || '').toLowerCase().trim();
+    if (!cleanEmail) {
+      throw new Error('Email người bị thu hồi quyền không hợp lệ.');
+    }
+
     const remaining = this.roleRepo.where('tournament_id', tournamentId);
-    const toDelete = remaining.find(r => 
-      String(r.user_email).toLowerCase().trim() === cleanEmail && 
-      (!role || r.role === role)
+    const toDelete = remaining.find(r =>
+      String(r.user_email).toLowerCase().trim() === cleanEmail &&
+      (!normalizedRole || String(r.role || '').toLowerCase().trim() === normalizedRole)
     );
 
     if (toDelete) {
       this.roleRepo.delete(toDelete.role_id);
     }
 
-    Logger.log(`Revoked role ${role} for ${targetEmail} in tournament ${tournamentId} by ${revokedBy}`);
-    return { success: true, message: `Đã thu hồi quyền ${role} của ${targetEmail}` };
+    Logger.log(`Revoked role ${normalizedRole || 'any'} for ${targetEmail} in tournament ${tournamentId} by ${revokedBy || currentEmail}`);
+    return { success: true, message: `Đã thu hồi quyền ${normalizedRole || 'đã gán'} của ${targetEmail}` };
   }
 
   /**
@@ -151,7 +235,8 @@ class AuthService {
   }
 
   /**
-   * Kiểm tra quyền thực thi API ở cấp giải đấu
+   * Chỉ kiểm tra role-level không phải action-level.
+   * Giữ nguyên để tương thích với các code cũ.
    */
   checkPermission(tournamentId, allowedRoles) {
     const email = this.getCurrentUserEmail();
@@ -161,6 +246,31 @@ class AuthService {
       throw new Error(`Bạn không có quyền thực hiện thao tác này ở giải đấu. Quyền hiện tại: ${role}. Quyền yêu cầu: ${allowedRoles.join(', ')}`);
     }
     return { email, role };
+  }
+
+  /**
+   * Action-based permission kiểm tra cho Tournament-level RBAC.
+   * Tài liệu AS04 đã định nghĩa các action chính nhưng không mô tả đầy đủ permission matrix
+   * kiểm tra theo từng role. Vì vậy chọn policy conservative: chỉ bảo toàn những action rõ ràng.
+   */
+  checkAction(tournamentId, action) {
+    const normalizedAction = String(action || '').trim();
+    if (!normalizedAction) {
+      throw new Error('Tên action không hợp lệ.');
+    }
+
+    const email = this.getCurrentUserEmail();
+    if (!email) {
+      throw new Error('Bạn chưa đăng nhập để thực hiện thao tác này.');
+    }
+
+    const role = this.getUserRole(tournamentId, email);
+    const allowedActions = this.permissionMatrix[role] || [];
+    if (!allowedActions.includes(normalizedAction)) {
+      throw new Error(`Bạn không có quyền "${normalizedAction}" trong giải đấu này. Vai trò hiện tại: ${role}.`);
+    }
+
+    return { email, role, action: normalizedAction };
   }
 }
 
@@ -180,7 +290,7 @@ function apiGetAuthContext(tournamentId) {
   const auth = getAuthService();
   const email = auth.getCurrentUserEmail();
   const role = auth.getUserRole(tournamentId, email);
-  
+
   if (email) {
     auth.registerUser(email);
   }
@@ -194,16 +304,20 @@ function apiGetAuthContext(tournamentId) {
 
 function apiAssignRole(tournamentId, targetEmail, role) {
   const auth = getAuthService();
-  auth.checkPermission(tournamentId, ['organizer']);
+  auth.checkAction(tournamentId, 'assign_role');
   const currentEmail = auth.getCurrentUserEmail();
   return auth.assignRole(tournamentId, targetEmail, role, currentEmail);
 }
 
 function apiRevokeRole(tournamentId, targetEmail, role) {
   const auth = getAuthService();
-  auth.checkPermission(tournamentId, ['organizer']);
+  auth.checkAction(tournamentId, 'assign_role');
   const currentEmail = auth.getCurrentUserEmail();
   return auth.revokeRole(tournamentId, targetEmail, role, currentEmail);
+}
+
+function apiCheckAction(tournamentId, action) {
+  return getAuthService().checkAction(tournamentId, action);
 }
 
 function apiGetAssignedRoles(tournamentId) {
