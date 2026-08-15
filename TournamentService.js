@@ -175,6 +175,60 @@ class TournamentService {
   addSportToTournament(tournamentId, config) {
     getAuthService().checkPermission(tournamentId, ['organizer']);
 
+    if (!tournamentId) {
+      throw new Error('Thiếu tournament_id để tạo TournamentSport.');
+    }
+
+    const tournament = this.tournamentRepo.getById(tournamentId);
+    if (!tournament) {
+      throw new Error('Không tìm thấy giải đấu để thêm môn thi đấu.');
+    }
+
+    if (!config || !config.sport_id) {
+      throw new Error('Vui lòng chọn môn thi đấu hợp lệ.');
+    }
+
+    const sport = this.sportRepo.getById(config.sport_id);
+    if (!sport) {
+      throw new Error(`Môn thi đấu với sport_id ${config.sport_id} không tồn tại.`);
+    }
+
+    const category = String(config.category || 'open').trim() || 'open';
+    const skillLevel = String(config.skill_level || '').trim();
+    const accessMode = String(config.access_mode || 'open').trim() || 'open';
+    const maxTeams = Number(config.max_teams);
+    const minTeams = Number(config.min_teams);
+
+    if (!Number.isFinite(maxTeams) || maxTeams <= 0) {
+      throw new Error('Số lượng đội tối đa (max_teams) phải là số dương.');
+    }
+
+    if (!Number.isFinite(minTeams) || minTeams <= 0) {
+      throw new Error('Số lượng đội tối thiểu (min_teams) phải là số dương.');
+    }
+
+    if (minTeams > maxTeams) {
+      throw new Error('min_teams không được lớn hơn max_teams.');
+    }
+
+    if (config.registration_deadline) {
+      const deadline = new Date(config.registration_deadline);
+      if (Number.isNaN(deadline.getTime())) {
+        throw new Error('registration_deadline không hợp lệ.');
+      }
+    }
+
+    const duplicate = this.tsRepo.getAll().find(ts =>
+      String(ts.tournament_id) === String(tournamentId) &&
+      String(ts.sport_id) === String(config.sport_id) &&
+      String(ts.category || 'open').toLowerCase().trim() === category.toLowerCase() &&
+      String(ts.skill_level || '').toLowerCase().trim() === skillLevel.toLowerCase()
+    );
+
+    if (duplicate) {
+      throw new Error(`TournamentSport đã tồn tại cho giải đấu này với môn ${sport.name}, category "${category}", skill_level "${skillLevel || 'không xác định'}".`);
+    }
+
     const tsId = generateId('TS');
     const newTS = {
       ts_id: tsId,
@@ -182,13 +236,13 @@ class TournamentService {
       sport_id: config.sport_id,
 
       // V3: Category / Skill Level / Access Mode
-      category: config.category || 'open',
-      skill_level: config.skill_level || '',
-      access_mode: config.access_mode || 'open',
+      category: category,
+      skill_level: skillLevel,
+      access_mode: accessMode,
 
       format: config.format || 'round_robin',
-      max_teams: Number(config.max_teams) || 8,
-      min_teams: Number(config.min_teams) || 2,
+      max_teams: maxTeams,
+      min_teams: minTeams,
       points_for_win: !isNaN(Number(config.points_for_win))
         ? Number(config.points_for_win)
         : 3,
@@ -201,7 +255,7 @@ class TournamentService {
       num_groups: Number(config.num_groups) || 1,
       teams_advance_per_group: Number(config.teams_advance_per_group) || 2,
       registration_deadline: config.registration_deadline || '',
-      status: 'open'
+      status: config.status || 'open'
     };
 
     return this.tsRepo.insert(newTS);
