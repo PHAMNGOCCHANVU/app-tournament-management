@@ -6,19 +6,19 @@
     const container = document.getElementById('app-view');
 
     container.innerHTML = `
-      <div style="max-width: 800px; margin: 0 auto;">
+      <div style="max-width: 1200px; margin: 0 auto;">
         <h2 style="margin-bottom:1.5rem;">👤 Trang Cá Nhân & Quản Lý</h2>
 
         <!-- User Info Card -->
         <div class="card" style="margin-bottom:1.5rem;">
-          <div style="display:flex; align-items:center; gap:1.25rem;">
+          <div style="display:flex; align-items:center; gap:1.25rem; flex-wrap:wrap;">
             <div style="width:64px; height:64px; background:linear-gradient(135deg, var(--primary), var(--secondary)); border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:2rem;">
               👤
             </div>
             <div>
               <h3 style="margin-bottom:0.25rem;">${App.state.user.email || 'Người dùng chưa đăng nhập'}</h3>
               <p style="color:var(--text-muted); font-size:0.9rem;">
-                Vai trò hệ thống mặc định: <span class="user-badge">${App.state.user.role}</span>
+                Vai trò hệ thống: <span class="user-badge">${App.state.user.system_role || App.state.user.role || 'user'}</span>
               </p>
             </div>
           </div>
@@ -36,6 +36,8 @@
           </button>
         </div>
 
+        <div id="admin-management-container"></div>
+
         <!-- My Tournaments & Teams List Container -->
         <div id="my-activities-container">
           <div class="loader-center"><div class="spinner"></div><p>Đang tải hoạt động của bạn...</p></div>
@@ -44,6 +46,9 @@
     `;
 
     loadMyProfileActivities();
+    if (App.state.user.isAdmin) {
+      loadAdminManagementPanel();
+    }
   };
 
   function loadMyProfileActivities() {
@@ -100,6 +105,338 @@
       })
       .catch(err => {
         container.innerHTML = `<div class="card"><p style="color:var(--danger);">Lỗi: ${err.message}</p></div>`;
+      });
+  }
+
+  async function loadAdminManagementPanel() {
+    const container = document.getElementById('admin-management-container');
+    if (!container) return;
+
+    try {
+      const [users, configData, tournamentList, auditLogs] = await Promise.all([
+        App.server.call('apiListUsersForAdmin'),
+        Promise.all([
+          App.server.call('apiGetSystemConfig', 'allow_user_create_tournament', 'true'),
+          App.server.call('apiGetSystemConfig', 'default_user_status', 'pending'),
+          App.server.call('apiGetSystemConfig', 'default_system_role', 'user')
+        ]),
+        App.server.call('apiGetTournamentList'),
+        App.server.call('apiListAuditLogs', 20)
+      ]);
+
+      const config = {
+        allow_user_create_tournament: configData[0] || 'true',
+        default_user_status: configData[1] || 'pending',
+        default_system_role: configData[2] || 'user'
+      };
+
+      container.innerHTML = `
+        <div class="card" style="margin-bottom:1.5rem;">
+          <h3 style="margin-bottom:1rem; color:var(--accent);">🛡️ Quản Lý Hệ Thống</h3>
+
+          <div class="grid-2" style="margin-bottom:1.25rem;">
+            <div class="form-group">
+              <label class="form-label">allow_user_create_tournament</label>
+              <select class="form-control" id="allow-user-create-tournament">
+                <option value="true" ${config.allow_user_create_tournament === 'true' ? 'selected' : ''}>true</option>
+                <option value="false" ${config.allow_user_create_tournament === 'false' ? 'selected' : ''}>false</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">default_user_status</label>
+              <select class="form-control" id="default-user-status">
+                <option value="pending" ${config.default_user_status === 'pending' ? 'selected' : ''}>pending</option>
+                <option value="active" ${config.default_user_status === 'active' ? 'selected' : ''}>active</option>
+                <option value="rejected" ${config.default_user_status === 'rejected' ? 'selected' : ''}>rejected</option>
+                <option value="suspended" ${config.default_user_status === 'suspended' ? 'selected' : ''}>suspended</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">default_system_role</label>
+              <select class="form-control" id="default-system-role">
+                <option value="user" ${config.default_system_role === 'user' ? 'selected' : ''}>user</option>
+                <option value="admin" ${config.default_system_role === 'admin' ? 'selected' : ''}>admin</option>
+                <option value="system_admin" ${config.default_system_role === 'system_admin' ? 'selected' : ''}>system_admin</option>
+                <option value="super_admin" ${config.default_system_role === 'super_admin' ? 'selected' : ''}>super_admin</option>
+              </select>
+            </div>
+
+            <div class="form-group" style="display:flex; align-items:flex-end;">
+              <button class="btn btn-primary" onclick="saveAdminConfig()">💾 Lưu cấu hình</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-bottom:1.5rem;">
+          <h3 style="margin-bottom:1rem; color:var(--primary);">👥 Quản Lý Người Dùng</h3>
+          <div class="table-container">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Email</th>
+                  <th>Tên hiển thị</th>
+                  <th>Status</th>
+                  <th>System Role</th>
+                  <th>Ngày tạo</th>
+                  <th>Hành động</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${(users || []).map(u => `
+                  <tr>
+                    <td>${u.email || ''}</td>
+                    <td>${u.display_name || ''}</td>
+                    <td>
+                      <select class="form-control" id="status-${u.user_id}" onchange="changeUserStatus('${u.email}', this.value)">
+                        <option value="pending" ${u.status === 'pending' ? 'selected' : ''}>pending</option>
+                        <option value="active" ${u.status === 'active' ? 'selected' : ''}>active</option>
+                        <option value="rejected" ${u.status === 'rejected' ? 'selected' : ''}>rejected</option>
+                        <option value="suspended" ${u.status === 'suspended' ? 'selected' : ''}>suspended</option>
+                      </select>
+                    </td>
+                    <td>
+                      <select class="form-control" id="role-${u.user_id}" onchange="changeUserSystemRole('${u.email}', this.value)">
+                        <option value="user" ${u.system_role === 'user' ? 'selected' : ''}>user</option>
+                        <option value="admin" ${u.system_role === 'admin' ? 'selected' : ''}>admin</option>
+                        <option value="system_admin" ${u.system_role === 'system_admin' ? 'selected' : ''}>system_admin</option>
+                        <option value="super_admin" ${u.system_role === 'super_admin' ? 'selected' : ''}>super_admin</option>
+                      </select>
+                    </td>
+                    <td>${formatDate(u.created_at)}</td>
+                    <td>
+                      <div style="display:flex; gap:0.35rem; flex-wrap:wrap;">
+                        <button class="btn btn-sm btn-success" onclick="triggerUserAction('approve', '${u.email}')">Approve</button>
+                        <button class="btn btn-sm btn-danger" onclick="triggerUserAction('reject', '${u.email}')">Reject</button>
+                        <button class="btn btn-sm btn-secondary" onclick="triggerUserAction('suspend', '${u.email}')">Suspend</button>
+                      </div>
+                    </td>
+                  </tr>
+                `).join('') || '<tr><td colspan="6">Chưa có người dùng nào.</td></tr>'}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="card" style="margin-bottom:1.5rem;">
+          <h3 style="margin-bottom:1rem; color:var(--accent);">🎯 Quick Role Assignment</h3>
+          <div class="grid-2" style="margin-bottom:1rem;">
+            <div class="form-group">
+              <label class="form-label">Tournament</label>
+              <select class="form-control" id="quick-role-tournament-select">
+                ${(tournamentList || []).map(t => `<option value="${t.tournament_id}">${t.name}</option>`).join('') || '<option value="">Chưa có giải đấu</option>'}
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">User email</label>
+              <input class="form-control" id="quick-role-user-email" placeholder="user@example.com">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Role</label>
+              <select class="form-control" id="quick-role-role-select">
+                <option value="organizer">organizer</option>
+                <option value="editor">editor</option>
+                <option value="referee">referee</option>
+                <option value="player">player</option>
+                <option value="viewer">viewer</option>
+              </select>
+            </div>
+            <div class="form-group" style="display:flex; align-items:flex-end; gap:0.5rem;">
+              <button class="btn btn-primary" onclick="assignQuickRole()">Assign Role</button>
+              <button class="btn btn-secondary" onclick="revokeQuickRole()">Revoke Role</button>
+            </div>
+          </div>
+          <div id="quick-role-assigned-list-container"></div>
+        </div>
+
+        <div class="card">
+          <h3 style="margin-bottom:1rem; color:var(--secondary);">📜 Audit Log</h3>
+          <div class="table-container">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Timestamp</th>
+                  <th>Actor</th>
+                  <th>Action</th>
+                  <th>Target</th>
+                  <th>Details</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${(auditLogs || []).map(log => `
+                  <tr>
+                    <td>${formatDate(log.timestamp)}</td>
+                    <td>${log.user_email || '-'}</td>
+                    <td>${log.action || '-'}</td>
+                    <td>${log.resource_type || '-'} / ${log.resource_id || '-'}</td>
+                    <td>${log.details || '-'}</td>
+                  </tr>
+                `).join('') || '<tr><td colspan="5">Chưa có log nào.</td></tr>'}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    `;
+
+    if (tournamentList && tournamentList.length > 0) {
+      const tournamentId = tournamentList[0].tournament_id;
+      const select = document.getElementById('quick-role-tournament-select');
+      if (select && tournamentId) {
+        select.value = tournamentId;
+      }
+      loadAssignedRolesForQuickRole(tournamentId);
+    }
+  } catch (err) {
+    container.innerHTML = `<div class="card"><p style="color:var(--danger);">Lỗi tải quản trị hệ thống: ${err.message}</p></div>`;
+  }
+
+  function saveAdminConfig() {
+    const allowValue = document.getElementById('allow-user-create-tournament')?.value || 'true';
+    const defaultStatus = document.getElementById('default-user-status')?.value || 'pending';
+    const defaultRole = document.getElementById('default-system-role')?.value || 'user';
+
+    Promise.all([
+      App.server.call('apiSetSystemConfig', 'allow_user_create_tournament', allowValue),
+      App.server.call('apiSetSystemConfig', 'default_user_status', defaultStatus),
+      App.server.call('apiSetSystemConfig', 'default_system_role', defaultRole)
+    ])
+      .then(() => {
+        App.toast.show('Cấu hình hệ thống đã được lưu.', 'success');
+        loadAdminManagementPanel();
+      })
+      .catch(err => App.toast.show('Lỗi cập nhật cấu hình: ' + err.message, 'error'));
+  }
+
+  function triggerUserAction(action, email) {
+    const fnMap = {
+      approve: 'apiApproveUser',
+      reject: 'apiRejectUser',
+      suspend: 'apiSuspendUser'
+    };
+
+    const fn = fnMap[action];
+    if (!fn) return;
+
+    App.server.call(fn, email)
+      .then(() => {
+        App.toast.show(`User ${email} đã được ${action}.`, 'success');
+        loadAdminManagementPanel();
+      })
+      .catch(err => App.toast.show('Lỗi cập nhật người dùng: ' + err.message, 'error'));
+  }
+
+  function changeUserStatus(email, status) {
+    const actionMap = {
+      active: 'apiApproveUser',
+      rejected: 'apiRejectUser',
+      suspended: 'apiSuspendUser',
+      pending: 'apiRejectUser'
+    };
+
+    const apiName = actionMap[String(status || '').toLowerCase()] || 'apiApproveUser';
+
+    App.server.call(apiName, email)
+      .then(() => {
+        App.toast.show('Trạng thái người dùng đã được cập nhật.', 'success');
+        loadAdminManagementPanel();
+      })
+      .catch(err => App.toast.show('Lỗi cập nhật trạng thái: ' + err.message, 'error'));
+  }
+
+  function changeUserSystemRole(email, role) {
+    App.server.call('apiSetSystemRole', email, role)
+      .then(() => {
+        App.toast.show('Vai trò hệ thống đã được cập nhật.', 'success');
+        loadAdminManagementPanel();
+      })
+      .catch(err => App.toast.show('Lỗi cập nhật vai trò hệ thống: ' + err.message, 'error'));
+  }
+
+  function assignQuickRole() {
+    const tournamentId = document.getElementById('quick-role-tournament-select')?.value;
+    const email = document.getElementById('quick-role-user-email')?.value;
+    const role = document.getElementById('quick-role-role-select')?.value;
+
+    if (!tournamentId || !email || !role) {
+      App.toast.show('Vui lòng nhập đầy đủ tournament, email và role.', 'error');
+      return;
+    }
+
+    App.server.call('apiAssignRole', tournamentId, email, role)
+      .then(() => {
+        App.toast.show('Gán quyền thành công.', 'success');
+        document.getElementById('quick-role-user-email').value = '';
+        loadAssignedRolesForQuickRole(tournamentId);
+      })
+      .catch(err => App.toast.show('Lỗi gán quyền: ' + err.message, 'error'));
+  }
+
+  function revokeQuickRole() {
+    const tournamentId = document.getElementById('quick-role-tournament-select')?.value;
+    const email = document.getElementById('quick-role-user-email')?.value;
+    const role = document.getElementById('quick-role-role-select')?.value;
+
+    if (!tournamentId || !email || !role) {
+      App.toast.show('Vui lòng nhập đầy đủ tournament, email và role.', 'error');
+      return;
+    }
+
+    App.server.call('apiRevokeRole', tournamentId, email, role)
+      .then(() => {
+        App.toast.show('Thu hồi quyền thành công.', 'success');
+        document.getElementById('quick-role-user-email').value = '';
+        loadAssignedRolesForQuickRole(tournamentId);
+      })
+      .catch(err => App.toast.show('Lỗi thu hồi quyền: ' + err.message, 'error'));
+  }
+
+  function loadAssignedRolesForQuickRole(tournamentId) {
+    const container = document.getElementById('quick-role-assigned-list-container');
+    if (!container) return;
+
+    if (!tournamentId) {
+      container.innerHTML = '<p style="color:var(--text-muted);">Chưa có tournament để xem danh sách quyền.</p>';
+      return;
+    }
+
+    App.server.call('apiGetAssignedRoles', tournamentId)
+      .then(roles => {
+        if (!roles || roles.length === 0) {
+          container.innerHTML = '<p style="color:var(--text-muted);">Chưa có quyền nào được gán cho giải đấu này.</p>';
+          return;
+        }
+
+        container.innerHTML = `
+          <div class="table-container">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>User Email</th>
+                  <th>Role</th>
+                  <th>Assigned At</th>
+                  <th>Assigned By</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${roles.map(r => `
+                  <tr>
+                    <td>${r.user_email || ''}</td>
+                    <td>${r.role || ''}</td>
+                    <td>${formatDate(r.assigned_at)}</td>
+                    <td>${r.assigned_by || '-'}</td>
+                    <td><button class="btn btn-sm btn-danger" onclick="App.server.call('apiRevokeRole', '${tournamentId}', '${r.user_email}', '${r.role || 'viewer'}').then(()=>{ App.toast.show('Thu hồi quyền thành công.', 'success'); loadAdminManagementPanel(); }).catch(err => App.toast.show('Lỗi thu hồi quyền: ' + err.message, 'error'));">Revoke</button></td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        `;
+      })
+      .catch(err => {
+        container.innerHTML = `<p style="color:var(--danger);">Lỗi tải quyền giải đấu: ${err.message}</p>`;
       });
   }
 

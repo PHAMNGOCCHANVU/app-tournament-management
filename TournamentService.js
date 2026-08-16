@@ -25,6 +25,12 @@ class TournamentService {
       throw new Error('Bạn cần nhập/đăng nhập bằng tài khoản Google để tạo giải đấu.');
     }
 
+    if (!auth.canCreateTournament(userEmail)) {
+      const user = auth.getUserProfile(userEmail);
+      const userStatus = user && user.status ? user.status : 'pending';
+      throw new Error(`Tài khoản ${userEmail} đang ở trạng thái "${userStatus}" hoặc không được phép tạo giải đấu theo cấu hình hệ thống.`);
+    }
+
     if (!data.name || !data.start_date || !data.end_date || !data.location) {
       throw new Error('Vui lòng điền đầy đủ các thông tin bắt buộc của giải đấu.');
     }
