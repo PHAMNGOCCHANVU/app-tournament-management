@@ -80,6 +80,8 @@
   };
 
   let openTournamentsList = [];
+  let selectedTournamentSports = [];
+  let selectedTournamentSportMeta = null;
 
   function loadOpenTournamentsForRegistration(presetId) {
     App.server.call('apiGetTournamentList', { status: 'open' })
@@ -98,25 +100,80 @@
       .catch(err => App.toast.show('Lỗi tải giải đấu: ' + err.message, 'error'));
   }
 
+  function renderSportRulesInfo(sportMeta) {
+    const infoEl = document.getElementById('sport-rules-info');
+    if (!infoEl) return;
+
+    if (!sportMeta) {
+      infoEl.style.display = 'none';
+      infoEl.innerHTML = '';
+      return;
+    }
+
+    const sportName = sportMeta.sport_name || 'Chưa rõ';
+    const category = sportMeta.category || 'Không rõ';
+    const skillLevel = sportMeta.skill_level || 'Không rõ';
+    const sportType = sportMeta.sport_type || 'Không rõ';
+    const format = sportMeta.format || 'Không rõ';
+    const accessMode = sportMeta.access_mode || 'Không rõ';
+    const minPlayers = sportMeta.min_players_per_team ?? 'Không rõ';
+    const maxPlayers = sportMeta.max_players_per_team ?? 'Không rõ';
+    const maxTeams = sportMeta.max_teams ?? 'Không rõ';
+    const minTeams = sportMeta.min_teams ?? 'Không rõ';
+    const deadline = sportMeta.registration_deadline || 'Không có';
+    const registeredTeams = sportMeta.registered_teams_count ?? 0;
+
+    infoEl.innerHTML = `
+      <strong>Thông tin môn thi:</strong><br>
+      - Môn: ${sportName}<br>
+      - Category: ${category}<br>
+      - Skill level: ${skillLevel}<br>
+      - Sport type: ${sportType}<br>
+      - Format: ${format}<br>
+      - Access mode: ${accessMode}<br>
+      - Số thành viên tối thiểu/tối đa: ${minPlayers} / ${maxPlayers}<br>
+      - Số đội đã đăng ký / tối đa: ${registeredTeams} / ${maxTeams}<br>
+      - Số đội tối thiểu: ${minTeams}<br>
+      - Hạn đăng ký: ${deadline}<br>
+      - Trạng thái: ${sportMeta.status || 'unknown'}
+    `;
+    infoEl.style.display = 'block';
+  }
+
   function onRegisterTournamentChange() {
     const tId = document.getElementById('reg-tournament-select').value;
     const tsSelect = document.getElementById('reg-ts-select');
+    selectedTournamentSports = [];
+    selectedTournamentSportMeta = null;
     tsSelect.innerHTML = `<option value="">-- Chọn Môn Thi Đấu --</option>`;
+    renderSportRulesInfo(null);
 
     if (!tId) return;
 
     App.server.call('apiGetTournamentById', tId)
       .then(t => {
         if (!t || !t.sports) return;
-        const openSports = t.sports.filter(s => s.status === 'open');
+
+        const openSports = (t.sports || []).filter(s => s.status === 'open');
+        selectedTournamentSports = openSports;
+
         tsSelect.innerHTML = `<option value="">-- Chọn Môn Thi Đấu --</option>` +
-          openSports.map(s => `<option value="${s.ts_id}">${s.sport_name} (Hạn: ${s.registration_deadline || 'Không có'})</option>`).join('');
-      });
+          openSports.map(s => {
+            const categoryText = s.category ? ` • ${s.category}` : '';
+            const skillText = s.skill_level ? ` • ${s.skill_level}` : '';
+            const deadlineText = s.registration_deadline ? ` • Hạn: ${s.registration_deadline}` : '';
+            return `<option value="${s.ts_id}">${s.sport_name || 'Môn thi'}${categoryText}${skillText}${deadlineText}</option>`;
+          }).join('');
+      })
+      .catch(err => App.toast.show('Lỗi tải danh sách môn thi đấu: ' + err.message, 'error'));
   }
 
   function onRegisterTsChange() {
+    const tsId = document.getElementById('reg-ts-select').value;
     const playersList = document.getElementById('players-input-list');
     playersList.innerHTML = '';
+    selectedTournamentSportMeta = selectedTournamentSports.find(s => s.ts_id === tsId) || null;
+    renderSportRulesInfo(selectedTournamentSportMeta);
 
     // Add Captain row by default
     addPlayerInputRow('Đội trưởng', true);
@@ -129,14 +186,17 @@
     const rowId = 'player-row-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
 
     const div = document.createElement('div');
-    div.className = 'grid-4';
+    div.className = 'player-row';
     div.id = rowId;
+    div.style.display = 'grid';
+    div.style.gridTemplateColumns = 'repeat(6, minmax(120px, 1fr))';
+    div.style.gap = '0.5rem';
     div.style.marginBottom = '0.75rem';
     div.style.alignItems = 'center';
 
     div.innerHTML = `
       <div>
-        <input type="text" class="form-control p-name" placeholder="Họ và tên" required>
+        <input type="text" class="form-control p-name" placeholder="Họ và tên" ${isCaptain ? 'required' : ''}>
       </div>
       <div>
         <input type="email" class="form-control p-email" placeholder="Email Google" ${isCaptain ? 'required' : ''}>
@@ -144,13 +204,28 @@
       <div>
         <input type="text" class="form-control p-phone" placeholder="Số điện thoại">
       </div>
-      <div style="display:flex; gap:0.5rem;">
-        <input type="number" class="form-control p-jersey" placeholder="Số áo" style="width:70px;">
+      <div>
+        <select class="form-control p-gender">
+          <option value="">-- Giới tính --</option>
+          <option value="male">Nam</option>
+          <option value="female">Nữ</option>
+          <option value="other">Khác</option>
+        </select>
+      </div>
+      <div>
+        <input type="text" class="form-control p-position" placeholder="Vị trí">
+      </div>
+      <div style="display:flex; gap:0.5rem; align-items:center;">
+        <input type="number" class="form-control p-jersey" placeholder="Số áo" min="0" step="1">
         ${!isCaptain ? `<button type="button" class="btn btn-sm btn-danger" onclick="document.getElementById('${rowId}').remove()">✕</button>` : '<span class="badge badge-open">Captain</span>'}
       </div>
     `;
 
     list.appendChild(div);
+  }
+
+  function isValidEmail(email) {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || '').trim());
   }
 
   function handleRegisterTeamSubmit(event) {
@@ -160,40 +235,125 @@
     submitBtn.disabled = true;
     submitBtn.innerText = '⏳ Đang đăng ký...';
 
-    const playersData = [];
-    document.querySelectorAll('#players-input-list .grid-4').forEach((row, idx) => {
-      const name = row.querySelector('.p-name').value;
-      const email = row.querySelector('.p-email').value;
-      const phone = row.querySelector('.p-phone').value;
-      const jersey = row.querySelector('.p-jersey').value;
+    try {
+      const tsId = document.getElementById('reg-ts-select').value;
+      const teamName = String(document.getElementById('reg-team-name').value || '').trim();
+      const captainEmail = String(document.getElementById('reg-captain-email').value || '').trim();
 
-      if (name) {
+      if (!tsId) {
+        throw new Error('Vui lòng chọn môn thi đấu.');
+      }
+
+      if (!teamName) {
+        throw new Error('Tên đội / tên VĐV không được để trống.');
+      }
+
+      if (!captainEmail) {
+        throw new Error('Email Đội trưởng / Người đại diện không được để trống.');
+      }
+
+      if (!isValidEmail(captainEmail)) {
+        throw new Error('Email Đội trưởng / Người đại diện không hợp lệ.');
+      }
+
+      const rows = Array.from(document.querySelectorAll('#players-input-list .player-row'));
+      if (rows.length === 0) {
+        throw new Error('Danh sách thành viên không được rỗng.');
+      }
+
+      const playersData = [];
+      const seenEmails = new Set();
+      const seenJerseys = new Set();
+
+      rows.forEach((row, idx) => {
+        const name = String(row.querySelector('.p-name').value || '').trim();
+        const email = String(row.querySelector('.p-email').value || '').trim();
+        const phone = String(row.querySelector('.p-phone').value || '').trim();
+        const gender = String(row.querySelector('.p-gender').value || '').trim();
+        const position = String(row.querySelector('.p-position').value || '').trim();
+        const jerseyRaw = String(row.querySelector('.p-jersey').value || '').trim();
+        const jersey = jerseyRaw === '' ? null : Number(jerseyRaw);
+
+        if (!name) {
+          throw new Error(`Tên thành viên thứ ${idx + 1} không được để trống.`);
+        }
+
+        if (!email) {
+          throw new Error(`Email thành viên thứ ${idx + 1} không được để trống.`);
+        }
+
+        if (!isValidEmail(email)) {
+          throw new Error(`Email thành viên thứ ${idx + 1} không hợp lệ.`);
+        }
+
+        if (seenEmails.has(email.toLowerCase())) {
+          throw new Error(`Email thành viên bị trùng trong cùng roster: ${email}`);
+        }
+        seenEmails.add(email.toLowerCase());
+
+        if (jersey !== null && (!Number.isFinite(jersey) || jersey < 0)) {
+          throw new Error(`Số áo của thành viên thứ ${idx + 1} không hợp lệ.`);
+        }
+
+        if (jersey !== null) {
+          const jerseyKey = String(jersey);
+          if (seenJerseys.has(jerseyKey)) {
+            throw new Error(`Số áo ${jerseyKey} bị trùng trong cùng roster.`);
+          }
+          seenJerseys.add(jerseyKey);
+        }
+
         playersData.push({
           name: name,
           email: email,
           phone: phone,
-          jersey_number: jersey,
+          gender: gender,
+          position: position,
+          jersey_number: jersey !== null ? jersey : undefined,
           role_in_team: idx === 0 ? 'captain' : 'player'
         });
-      }
-    });
-
-    const payload = {
-      ts_id: document.getElementById('reg-ts-select').value,
-      name: document.getElementById('reg-team-name').value,
-      captain_email: document.getElementById('reg-captain-email').value,
-      players: playersData
-    };
-
-    App.server.call('apiRegisterTeam', payload)
-      .then(res => {
-        App.toast.show('Đăng ký đội thành công! Đơn đăng ký đang chờ Ban tổ chức duyệt.', 'success');
-        App.router.navigateTo('dashboard');
-      })
-      .catch(err => {
-        App.toast.show('Lỗi khi đăng ký: ' + err.message, 'error');
-        submitBtn.disabled = false;
-        submitBtn.innerText = '✉️ Gửi Đơn Đăng Ký';
       });
+
+      const minPlayers = Number(selectedTournamentSportMeta && selectedTournamentSportMeta.min_players_per_team !== undefined
+        ? selectedTournamentSportMeta.min_players_per_team
+        : (playersData.length || 1));
+      const maxPlayers = Number(selectedTournamentSportMeta && selectedTournamentSportMeta.max_players_per_team !== undefined
+        ? selectedTournamentSportMeta.max_players_per_team
+        : playersData.length);
+
+      if (playersData.length < minPlayers) {
+        throw new Error(`Số lượng thành viên tối thiểu cho môn này là ${minPlayers}.`);
+      }
+
+      if (playersData.length > maxPlayers) {
+        throw new Error(`Số lượng thành viên tối đa cho môn này là ${maxPlayers}.`);
+      }
+
+      if (playersData[0].email.toLowerCase() !== captainEmail.toLowerCase()) {
+        throw new Error('Email Đội trưởng / Người đại diện phải trùng với email của thành viên đầu tiên/captain trong roster.');
+      }
+
+      const payload = {
+        ts_id: tsId,
+        name: teamName,
+        captain_email: captainEmail,
+        players: playersData
+      };
+
+      return App.server.call('apiRegisterTeam', payload)
+        .then(res => {
+          App.toast.show('Đăng ký đội thành công! Đơn đăng ký đang chờ Ban tổ chức duyệt.', 'success');
+          App.router.navigateTo('dashboard');
+        })
+        .catch(err => {
+          App.toast.show('Lỗi khi đăng ký: ' + err.message, 'error');
+          submitBtn.disabled = false;
+          submitBtn.innerText = '✉️ Gửi Đơn Đăng Ký';
+        });
+    } catch (err) {
+      App.toast.show(err.message, 'error');
+      submitBtn.disabled = false;
+      submitBtn.innerText = '✉️ Gửi Đơn Đăng Ký';
+    }
   }
 </script>

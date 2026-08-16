@@ -141,13 +141,14 @@ class AuthService {
 
   /**
    * Gán vai trò cho người dùng trong giải đấu.
-   * Chỉ cho phép: editor, referee, player.
-   * viewer và organizer không được gán thông qua TournamentRole.
+   * TournamentRole hỗ trợ 5 role theo Phase 1: organizer, editor, referee, player, viewer.
+   * organizer được giữ hợp lệ và cũng có thể trùng với tournament.organizer_email.
    */
   assignRole(tournamentId, targetEmail, role, assignedBy) {
     const normalizedRole = String(role || '').toLowerCase().trim();
-    if (!['editor', 'referee', 'player'].includes(normalizedRole)) {
-      throw new Error('Vai trò không hợp lệ cho TournamentRole: ' + role + '. Chỉ cho phép editor, referee, player.');
+    const validRoles = ['organizer', 'editor', 'referee', 'player', 'viewer'];
+    if (!validRoles.includes(normalizedRole)) {
+      throw new Error('Vai trò không hợp lệ cho TournamentRole: ' + role + '. Chỉ cho phép organizer, editor, referee, player, viewer.');
     }
 
     const currentEmail = this.getCurrentUserEmail();
@@ -160,11 +161,6 @@ class AuthService {
     const cleanEmail = String(targetEmail || '').toLowerCase().trim();
     if (!cleanEmail) {
       throw new Error('Email người nhận vai trò không hợp lệ.');
-    }
-
-    const tournament = this.tournamentRepo.getById(tournamentId);
-    if (tournament && String(tournament.organizer_email || '').toLowerCase().trim() === cleanEmail) {
-      throw new Error('Không thể gán vai trò organizer qua TournamentRole; organizer được xác định từ tournament.organizer_email.');
     }
 
     const existing = this.roleRepo.findOne(r =>
@@ -193,12 +189,13 @@ class AuthService {
 
   /**
    * Thu hồi vai trò người dùng trong giải đấu.
-   * Không cho phép thu hồi organizer hoặc viewer thông qua TournamentRole.
+   * TournamentRole hỗ trợ 5 role theo Phase 1: organizer, editor, referee, player, viewer.
    */
   revokeRole(tournamentId, targetEmail, role, revokedBy) {
     const normalizedRole = String(role || '').toLowerCase().trim();
-    if (normalizedRole && !['editor', 'referee', 'player'].includes(normalizedRole)) {
-      throw new Error('Vai trò không hợp lệ để thu hồi: ' + role + '. Chỉ cho phép editor, referee, player.');
+    const validRoles = ['organizer', 'editor', 'referee', 'player', 'viewer'];
+    if (normalizedRole && !validRoles.includes(normalizedRole)) {
+      throw new Error('Vai trò không hợp lệ để thu hồi: ' + role + '. Chỉ cho phép organizer, editor, referee, player, viewer.');
     }
 
     const currentEmail = this.getCurrentUserEmail();
