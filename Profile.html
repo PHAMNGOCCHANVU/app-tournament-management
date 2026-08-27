@@ -59,48 +59,114 @@
       return;
     }
 
-    App.server.call('apiGetTournamentList')
-      .then(tournaments => {
+    // Load both Organized Tournaments and My Teams concurrently
+    Promise.all([
+      App.server.call('apiGetTournamentList'),
+      App.server.call('apiGetMyRegisteredTeams').catch(() => [])
+    ])
+      .then(([tournaments, myTeams]) => {
         const myOrganized = (tournaments || []).filter(t => 
           String(t.organizer_email).toLowerCase() === App.state.user.email.toLowerCase()
         );
 
+        const myTeamsList = myTeams || [];
+
         container.innerHTML = `
-          <div class="card">
-            <h3 style="margin-bottom:1rem; color:var(--primary);">Giải Đấu Do Bạn Tổ Chức (${myOrganized.length})</h3>
+          <!-- Section 1: Organized Tournaments -->
+          <div class="card" style="margin-bottom:1.5rem;">
+            <h3 style="margin-bottom:1rem; color:var(--primary);">🏆 Giải Đấu Do Bạn Tổ Chức (${myOrganized.length})</h3>
             
             ${myOrganized.length === 0 ? '<p style="color:var(--text-muted);">Bạn chưa tạo giải đấu nào.</p>' : ''}
 
-            <div class="table-container">
-              <table class="table">
-                <thead>
-                  <tr>
-                    <th>Tên Giải</th>
-                    <th>Địa Điểm</th>
-                    <th>Trạng Thái</th>
-                    <th>Thao Tác</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  ${myOrganized.map(t => `
+            ${myOrganized.length > 0 ? `
+              <div class="table-container">
+                <table class="table">
+                  <thead>
                     <tr>
-                      <td><strong>${t.name}</strong></td>
-                      <td>${t.location}</td>
-                      <td><span class="badge badge-${t.status}">${t.status}</span></td>
-                      <td>
-                        <button class="btn btn-sm btn-success" onclick="App.router.navigateTo('tournament_manage', { tournamentId: '${t.tournament_id}' })">⚙️ Quản lý</button>
-                      </td>
+                      <th>Tên Giải</th>
+                      <th>Địa Điểm</th>
+                      <th>Trạng Thái</th>
+                      <th style="text-align:right;">Thao Tác</th>
                     </tr>
-                  `).join('')}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    ${myOrganized.map(t => `
+                      <tr>
+                        <td><strong>${t.name}</strong></td>
+                        <td>${t.location}</td>
+                        <td><span class="badge badge-${t.status}">${t.status}</span></td>
+                        <td style="text-align:right;">
+                          <button class="btn btn-sm btn-success" onclick="App.router.navigateTo('tournament_manage', { tournamentId: '${t.tournament_id}' })">⚙️ Quản lý</button>
+                        </td>
+                      </tr>
+                    `).join('')}
+                  </tbody>
+                </table>
+              </div>
+            ` : ''}
+          </div>
+
+          <!-- Section 2: My Registered Teams & Withdraw Action -->
+          <div class="card">
+            <h3 style="margin-bottom:1rem; color:var(--secondary);">⚽ Đội / Môn Thi Đấu Bạn Đã Đăng Ký (${myTeamsList.length})</h3>
+            
+            ${myTeamsList.length === 0 ? '<p style="color:var(--text-muted);">Bạn chưa đăng ký tham gia đội/môn thi đấu nào.</p>' : ''}
+
+            ${myTeamsList.length > 0 ? `
+              <div class="table-container">
+                <table class="table">
+                  <thead>
+                    <tr>
+                      <th>Tên Đội / VĐV</th>
+                      <th>Giải Đấu</th>
+                      <th>Ngày Đăng Ký</th>
+                      <th>Trạng Thái</th>
+                      <th style="text-align:right;">Thao Tác</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${myTeamsList.map(tm => {
+                      const isWithdrawn = tm.status === 'withdrawn';
+                      const isRejected = tm.status === 'rejected';
+                      const canWithdraw = !isWithdrawn && !isRejected;
+
+                      return `
+                        <tr>
+                          <td><strong>${tm.name}</strong></td>
+                          <td>${tm.tournament_name || 'Giải đấu'}</td>
+                          <td>${formatDate(tm.registration_date)}</td>
+                          <td><span class="badge badge-${tm.status}">${tm.status}</span></td>
+                          <td style="text-align:right;">
+                            ${canWithdraw ? `
+                              <button class="btn btn-sm btn-danger" onclick="handleWithdrawTeamClick('${tm.team_id}', '${tm.name}')">
+                                ✕ Rút lui
+                              </button>
+                            ` : `<span style="font-size:0.8rem; color:var(--text-muted);">${tm.status}</span>`}
+                          </td>
+                        </tr>
+                      `;
+                    }).join('')}
+                  </tbody>
+                </table>
+              </div>
+            ` : ''}
           </div>
         `;
       })
       .catch(err => {
         container.innerHTML = `<div class="card"><p style="color:var(--danger);">Lỗi: ${err.message}</p></div>`;
       });
+  }
+
+  function handleWithdrawTeamClick(teamId, teamName) {
+    App.modal.open('Rút Lui Khỏi Giải', `Bạn có chắc chắn muốn rút đội "${teamName}" khỏi giải đấu này không? Hành động này sẽ hủy đăng ký và xử thua mặc định các trận chưa thi đấu.`, () => {
+      App.server.call('apiWithdrawTeam', teamId)
+        .then(() => {
+          App.toast.show('Đã rút lui thành công khỏi giải đấu.', 'info');
+          loadMyProfileActivities();
+        })
+        .catch(err => App.toast.show('Lỗi: ' + err.message, 'error'));
+    });
   }
 
   function triggerDatabaseSetup() {

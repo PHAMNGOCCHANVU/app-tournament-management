@@ -1,23 +1,7 @@
 /**
- * Utils.gs - Generic Database Repository, Entity Models, ID Generator & Setup
+ * DB_Helper.js - Generic Database Repository, Batch Operations, ID Generator & Formatters
  * Built for Google Apps Script (V8 Engine) using Object-Oriented Design.
  */
-
-// Global Sheet Schema Definition
-const SCHEMAS = {
-  Tournament: ['tournament_id', 'name', 'description', 'start_date', 'end_date', 'location', 'organizer_email', 'status', 'created_at', 'updated_at'],
-  Sport: ['sport_id', 'name', 'type', 'min_players_per_team', 'max_players_per_team', 'scoring_type', 'description'],
-  TournamentSport: ['ts_id', 'tournament_id', 'sport_id', 'format', 'max_teams', 'min_teams', 'points_for_win', 'points_for_draw', 'points_for_loss', 'num_groups', 'teams_advance_per_group', 'registration_deadline', 'status'],
-  Team: ['team_id', 'ts_id', 'name', 'captain_email', 'registration_date', 'status', 'group_name', 'seed'],
-  Player: ['player_id', 'team_id', 'name', 'email', 'phone', 'jersey_number', 'role_in_team'],
-  Match: ['match_id', 'ts_id', 'round', 'round_name', 'group_name', 'team1_id', 'team2_id', 'team1_score', 'team2_score', 'winner_team_id', 'match_date', 'location', 'status', 'notes', 'updated_by', 'updated_at'],
-  Ranking: ['ranking_id', 'ts_id', 'team_id', 'group_name', 'played', 'won', 'drawn', 'lost', 'goals_for', 'goals_against', 'goal_difference', 'points', 'rank'],
-  User: ['user_id', 'email', 'display_name', 'created_at'],
-  TournamentRole: ['role_id', 'tournament_id', 'user_email', 'role', 'assigned_at', 'assigned_by']
-};
-
-// Global In-Memory Cache Store for current execution context
-const CACHE_STORE = {};
 
 /**
  * BaseRepository Class - Generic Repository Pattern for Google Sheets
@@ -26,14 +10,16 @@ class BaseRepository {
   constructor(sheetName, idColumnName) {
     this.sheetName = sheetName;
     this.idColumnName = idColumnName;
-    this.headers = SCHEMAS[sheetName] || [];
+    this.headers = (typeof SCHEMAS !== 'undefined' && SCHEMAS[sheetName]) ? SCHEMAS[sheetName] : [];
   }
 
   /**
    * Clear in-memory cache for this sheet
    */
   clearCache() {
-    delete CACHE_STORE[this.sheetName];
+    if (typeof CACHE_STORE !== 'undefined') {
+      delete CACHE_STORE[this.sheetName];
+    }
   }
 
   /**
@@ -63,20 +49,24 @@ class BaseRepository {
    * Get all records as Array of Objects (with In-Memory Caching for 10x Speed)
    */
   getAll() {
-    if (CACHE_STORE[this.sheetName]) {
+    if (typeof CACHE_STORE !== 'undefined' && CACHE_STORE[this.sheetName]) {
       return CACHE_STORE[this.sheetName];
     }
 
     const sheet = this.getSheet();
     const lastRow = sheet.getLastRow();
     if (lastRow <= 1) {
-      CACHE_STORE[this.sheetName] = [];
+      if (typeof CACHE_STORE !== 'undefined') {
+        CACHE_STORE[this.sheetName] = [];
+      }
       return [];
     }
 
     const data = sheet.getRange(2, 1, lastRow - 1, this.headers.length).getValues();
     const records = data.map(row => this.rowToObject(row));
-    CACHE_STORE[this.sheetName] = records;
+    if (typeof CACHE_STORE !== 'undefined') {
+      CACHE_STORE[this.sheetName] = records;
+    }
     return records;
   }
 
@@ -114,6 +104,19 @@ class BaseRepository {
     const row = this.objectToRow(recordObj);
     sheet.appendRow(row);
     return recordObj;
+  }
+
+  /**
+   * Batch insert records using setValues for high performance
+   */
+  batchInsert(records) {
+    if (!Array.isArray(records) || records.length === 0) return [];
+    this.clearCache();
+    const sheet = this.getSheet();
+    const startRow = sheet.getLastRow() + 1;
+    const rows = records.map(r => this.objectToRow(r));
+    sheet.getRange(startRow, 1, rows.length, this.headers.length).setValues(rows);
+    return records;
   }
 
   /**
@@ -236,39 +239,4 @@ function formatDate(dateString) {
   } catch (e) {
     return dateString;
   }
-}
-
-/**
- * Setup Database: Initialize all 9 sheets with headers and Seed Data
- */
-function setupDatabase() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  
-  Object.keys(SCHEMAS).forEach(sheetName => {
-    let sheet = ss.getSheetByName(sheetName);
-    const headers = SCHEMAS[sheetName];
-    if (!sheet) {
-      sheet = ss.insertSheet(sheetName);
-    }
-    if (sheet.getLastRow() === 0) {
-      sheet.appendRow(headers);
-      sheet.getRange(1, 1, 1, headers.length).setFontWeight("bold").setBackground("#e5e7eb");
-    }
-  });
-
-  const sportRepo = new BaseRepository('Sport', 'sport_id');
-  if (sportRepo.getAll().length === 0) {
-    const seedSports = [
-      { sport_id: 'S001', name: 'Bóng đá', type: 'team', min_players_per_team: 7, max_players_per_team: 15, scoring_type: 'goals', description: 'Môn bóng đá 7 người' },
-      { sport_id: 'S002', name: 'Bóng chuyền', type: 'team', min_players_per_team: 6, max_players_per_team: 12, scoring_type: 'sets', description: 'Bóng chuyền nam/nữ' },
-      { sport_id: 'S003', name: 'Cầu lông đơn', type: 'individual', min_players_per_team: 1, max_players_per_team: 1, scoring_type: 'sets', description: 'Cầu lông thi đấu đơn' },
-      { sport_id: 'S004', name: 'Cầu lông đôi', type: 'doubles', min_players_per_team: 2, max_players_per_team: 2, scoring_type: 'sets', description: 'Cầu lông thi đấu đôi' },
-      { sport_id: 'S005', name: 'Pickleball đôi', type: 'doubles', min_players_per_team: 2, max_players_per_team: 2, scoring_type: 'points', description: 'Pickleball thi đấu đôi' },
-      { sport_id: 'S006', name: 'Bóng bàn đơn', type: 'individual', min_players_per_team: 1, max_players_per_team: 1, scoring_type: 'sets', description: 'Bóng bàn thi đấu đơn' }
-    ];
-    seedSports.forEach(s => sportRepo.insert(s));
-    Logger.log('Seeded 6 sports successfully.');
-  }
-
-  return { success: true, message: 'Database setup completed successfully.' };
 }

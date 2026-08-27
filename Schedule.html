@@ -89,6 +89,7 @@
           }
 
           renderScheduleMatchesList(bundle.matches || []);
+          App.livescore.init(selectedScheduleTournamentId);
         } else if (list.length > 0 && !presetTId) {
           // Auto-select first tournament if none specified
           select.value = list[0].tournament_id;
@@ -112,7 +113,10 @@
     tsSelect.innerHTML = `<option value="">-- Chọn Môn Thi Đấu --</option>`;
     document.getElementById('schedule-matches-container').innerHTML = `<div class="loader-center"><div class="spinner"></div><p>Đang tải...</p></div>`;
 
-    if (!selectedScheduleTournamentId) return;
+    if (!selectedScheduleTournamentId) {
+      App.livescore.stop();
+      return;
+    }
 
     // Use bundle API for tournament change too (1 call instead of 3)
     App.server.call('apiGetSchedulePageBundle', selectedScheduleTournamentId)
@@ -135,6 +139,7 @@
             selectedScheduleTsId = bundle.tournament.sports[0].ts_id;
           }
           renderScheduleMatchesList(bundle.matches || []);
+          App.livescore.init(selectedScheduleTournamentId);
         }
       });
   }
@@ -177,9 +182,12 @@
       roundGroups[rName].push(m);
     });
 
-    const isLocked = currentTournamentDetails && ['completed', 'cancelled'].includes(currentTournamentDetails.status);
+    const isLocked = currentTournamentDetails && ['completed', 'cancelled', 'archived'].includes(currentTournamentDetails.status);
     // FIX: Use per-tournament role instead of global App.state.user.role
     const isRefOrOrg = App.hasRoleForTournament(selectedScheduleTournamentId, ['organizer', 'referee']);
+
+    const currentSport = currentTournamentDetails?.sports?.find(s => s.ts_id === selectedScheduleTsId);
+    const sportName = currentSport ? currentSport.sport_name : '';
 
     container.innerHTML = Object.keys(roundGroups).map(rName => `
       <div class="card" style="margin-bottom:1.5rem;">
@@ -201,30 +209,43 @@
               </tr>
             </thead>
             <tbody>
-              ${roundGroups[rName].map(m => `
-                <tr>
-                  <td>
-                    <strong style="${m.winner_team_id === m.team1_id ? 'color:var(--secondary);' : ''}">${m.team1_name}</strong>
-                  </td>
-                  <td style="text-align:center; font-weight:700; font-size:1.1rem; color:var(--accent);">
-                    ${m.status === 'completed' ? `${m.team1_score} - ${m.team2_score}` : 'VS'}
-                  </td>
-                  <td>
-                    <strong style="${m.winner_team_id === m.team2_id ? 'color:var(--secondary);' : ''}">${m.team2_name}</strong>
-                  </td>
-                  <td>${m.location || 'Sân chính'}</td>
-                  <td><span class="badge badge-${m.status}">${m.status}</span></td>
-                  ${isRefOrOrg ? `
-                    <td style="text-align:right;">
-                      ${isLocked ? `<span style="font-size:0.8rem; color:var(--text-muted);">🔒 Khóa</span>` : `
-                        <button class="btn btn-sm btn-primary" onclick="App.router.navigateTo('match_result', { matchId: '${m.match_id}', tournamentId: '${selectedScheduleTournamentId}', tsId: '${selectedScheduleTsId}' })">
-                          ✏️ Nhập Tỉ Số
-                        </button>
-                      `}
+              ${roundGroups[rName].map(m => {
+                let statusBadge = `<span class="badge badge-${m.status}">${m.status}</span>`;
+                if (m.status === 'ongoing') {
+                  statusBadge = `<span class="badge badge-ongoing">🔴 LIVE</span>`;
+                } else if (m.status === 'waiting_confirmation') {
+                  statusBadge = `<span class="badge badge-waiting_confirmation">⏳ Chờ Ký</span>`;
+                } else if (m.status === 'completed') {
+                  statusBadge = `<span class="badge badge-completed">✅ Xong</span>`;
+                } else if (m.status === 'scheduled') {
+                  statusBadge = `<span class="badge badge-open">📅 Lịch</span>`;
+                }
+
+                return `
+                  <tr>
+                    <td>
+                      <strong style="${m.winner_team_id === m.team1_id ? 'color:var(--secondary);' : ''}">${m.team1_name}</strong>
                     </td>
-                  ` : ''}
-                </tr>
-              `).join('')}
+                    <td style="text-align:center; font-weight:700; font-size:1.1rem; color:var(--accent);" data-match-score-id="${m.match_id}">
+                      ${['completed', 'ongoing', 'waiting_confirmation'].includes(m.status) ? `${m.team1_score !== '' ? m.team1_score : 0} - ${m.team2_score !== '' ? m.team2_score : 0}` : 'VS'}
+                    </td>
+                    <td>
+                      <strong style="${m.winner_team_id === m.team2_id ? 'color:var(--secondary);' : ''}">${m.team2_name}</strong>
+                    </td>
+                    <td>${m.location || 'Sân chính'}</td>
+                    <td data-match-status-id="${m.match_id}">${statusBadge}</td>
+                    ${isRefOrOrg ? `
+                      <td style="text-align:right;">
+                        ${isLocked ? `<span style="font-size:0.8rem; color:var(--text-muted);">🔒 Khóa</span>` : `
+                          <button class="btn btn-sm btn-primary" onclick="App.router.navigateTo('match_result', { matchId: '${m.match_id}', tournamentId: '${selectedScheduleTournamentId}', tsId: '${selectedScheduleTsId}', sportName: '${encodeURIComponent(sportName)}' })">
+                            ⚖️ Điều Hành / Nhập Điểm
+                          </button>
+                        `}
+                      </td>
+                    ` : ''}
+                  </tr>
+                `;
+              }).join('')}
             </tbody>
           </table>
         </div>

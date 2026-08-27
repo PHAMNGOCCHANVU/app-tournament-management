@@ -1,8 +1,8 @@
 /**
- * TournamentService.gs - Tournament & TournamentSport CRUD and Workflow Lifecycle Management
+ * Mod_Tournament.js - Module 1: Tournament Config & Lifecycle Management
  */
 
-class TournamentService {
+class TournamentConfigService {
   get tournamentRepo() { return new BaseRepository('Tournament', 'tournament_id'); }
   get tsRepo() { return new BaseRepository('TournamentSport', 'ts_id'); }
   get sportRepo() { return new BaseRepository('Sport', 'sport_id'); }
@@ -40,7 +40,7 @@ class TournamentService {
       end_date: data.end_date,
       location: data.location,
       organizer_email: userEmail,
-      status: 'draft',
+      status: TOURNAMENT_STATUS.DRAFT,
       created_at: now,
       updated_at: now
     };
@@ -90,7 +90,7 @@ class TournamentService {
     const existing = this.tournamentRepo.getById(tournamentId);
     if (!existing) throw new Error('Không tìm thấy giải đấu.');
 
-    if (existing.status !== 'draft') {
+    if (existing.status !== TOURNAMENT_STATUS.DRAFT) {
       throw new Error('Chỉ có thể xóa giải đấu ở trạng thái Nháp (draft).');
     }
 
@@ -134,7 +134,7 @@ class TournamentService {
     return tournaments.map(t => {
       const sportsInTournament = allTS.filter(ts => ts.tournament_id === t.tournament_id);
       const tsIds = sportsInTournament.map(ts => ts.ts_id);
-      const teamsInTournament = allTeams.filter(team => tsIds.includes(team.ts_id) && team.status === 'approved');
+      const teamsInTournament = allTeams.filter(team => tsIds.includes(team.ts_id) && team.status === TEAM_STATUS.APPROVED);
 
       return Object.assign({}, t, {
         sports_count: sportsInTournament.length,
@@ -160,7 +160,13 @@ class TournamentService {
         sport_name: sportInfo ? sportInfo.name : '',
         sport_type: sportInfo ? sportInfo.type : '',
         scoring_type: sportInfo ? sportInfo.scoring_type : '',
-        registered_teams_count: teams.filter(tm => tm.status === 'approved').length
+        min_players_per_team: sportInfo ? sportInfo.min_players_per_team : 1,
+        max_players_per_team: sportInfo ? sportInfo.max_players_per_team : 1,
+        positions: sportInfo ? sportInfo.positions : '',
+        position_rules: sportInfo ? sportInfo.position_rules : '',
+        category: ts.category || '',
+        skill_level: ts.skill_level || '',
+        registered_teams_count: teams.filter(tm => tm.status === TEAM_STATUS.APPROVED).length
       });
     });
 
@@ -173,7 +179,7 @@ class TournamentService {
    * Add a Sport configuration to a Tournament (TournamentSport)
    */
   addSportToTournament(tournamentId, config) {
-    getAuthService().checkPermission(tournamentId, ['organizer']);
+    getAuthService().checkPermission(tournamentId, ['organizer', 'editor']);
 
     const tsId = generateId('TS');
     const newTS = {
@@ -189,7 +195,9 @@ class TournamentService {
       num_groups: Number(config.num_groups) || 1,
       teams_advance_per_group: Number(config.teams_advance_per_group) || 2,
       registration_deadline: config.registration_deadline || '',
-      status: 'open'
+      status: TOURNAMENT_STATUS.OPEN,
+      category: config.category || '',
+      skill_level: config.skill_level || ''
     };
 
     return this.tsRepo.insert(newTS);
@@ -201,7 +209,14 @@ class TournamentService {
   updateStatus(tournamentId, newStatus) {
     getAuthService().checkPermission(tournamentId, ['organizer']);
 
-    const validStatuses = ['draft', 'open', 'in_progress', 'completed', 'cancelled'];
+    const validStatuses = [
+      TOURNAMENT_STATUS.DRAFT,
+      TOURNAMENT_STATUS.OPEN,
+      TOURNAMENT_STATUS.IN_PROGRESS,
+      TOURNAMENT_STATUS.COMPLETED,
+      TOURNAMENT_STATUS.CANCELLED,
+      TOURNAMENT_STATUS.ARCHIVED
+    ];
     if (!validStatuses.includes(newStatus)) {
       throw new Error('Trạng thái giải đấu không hợp lệ: ' + newStatus);
     }
@@ -214,9 +229,9 @@ class TournamentService {
     const tsList = this.tsRepo.where('tournament_id', tournamentId);
     tsList.forEach(ts => {
       let tsStatus = ts.status;
-      if (newStatus === 'open') tsStatus = 'open';
-      else if (newStatus === 'in_progress') tsStatus = 'in_progress';
-      else if (newStatus === 'completed') tsStatus = 'completed';
+      if (newStatus === TOURNAMENT_STATUS.OPEN) tsStatus = 'open';
+      else if (newStatus === TOURNAMENT_STATUS.IN_PROGRESS) tsStatus = 'in_progress';
+      else if (newStatus === TOURNAMENT_STATUS.COMPLETED || newStatus === TOURNAMENT_STATUS.ARCHIVED) tsStatus = 'completed';
       this.tsRepo.update(ts.ts_id, { status: tsStatus });
     });
 
@@ -224,11 +239,62 @@ class TournamentService {
   }
 }
 
-// Singleton Helper (global variable for V8 reliability)
+/**
+ * Setup Database: Initialize all sheets with headers and Seed Data
+ */
+function setupDatabase() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  
+  Object.keys(SCHEMAS).forEach(sheetName => {
+    let sheet = ss.getSheetByName(sheetName);
+    const headers = SCHEMAS[sheetName];
+    if (!sheet) {
+      sheet = ss.insertSheet(sheetName);
+      sheet.appendRow(headers);
+      sheet.getRange(1, 1, 1, headers.length).setFontWeight("bold").setBackground("#e5e7eb");
+    } else {
+      // Schema Migration: Ensure all columns are present in the exact order
+      const lastCol = sheet.getLastColumn();
+      if (lastCol === 0) {
+        sheet.appendRow(headers);
+      } else {
+        // Overwrite header row to align with current schema
+        sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+      }
+      sheet.getRange(1, 1, 1, headers.length).setFontWeight("bold").setBackground("#e5e7eb");
+    }
+  });
+
+  const sportRepo = new BaseRepository('Sport', 'sport_id');
+  const existingSports = sportRepo.getAll();
+
+  SEED_SPORTS.forEach(s => {
+    const existing = existingSports.find(es => es.sport_id === s.sport_id);
+    if (!existing) {
+      sportRepo.insert(s);
+    } else {
+      // Update existing records with the new fields
+      sportRepo.update(s.sport_id, {
+        categories: s.categories,
+        positions: s.positions,
+        position_rules: s.position_rules,
+        has_skill_level: s.has_skill_level,
+        default_levels: s.default_levels
+      });
+    }
+  });
+
+  if (typeof Logger !== 'undefined' && Logger.log) {
+    Logger.log('Database setup and migration completed successfully.');
+  }
+  return { success: true, message: 'Database setup completed successfully.' };
+}
+
+// Singleton Instance Helper
 let _tournamentServiceInstance = null;
 function getTournamentService() {
   if (!_tournamentServiceInstance) {
-    _tournamentServiceInstance = new TournamentService();
+    _tournamentServiceInstance = new TournamentConfigService();
   }
   return _tournamentServiceInstance;
 }
@@ -266,110 +332,4 @@ function apiUpdateTournamentStatus(tournamentId, newStatus) {
 
 function apiGetAllSports() {
   return new BaseRepository('Sport', 'sport_id').getAll();
-}
-
-/**
- * High-Performance Single Round-Trip Bundle API for Tournament Management Room
- */
-function apiGetTournamentManageBundle(tournamentId) {
-  const auth = getAuthService();
-  const authContext = apiGetAuthContext(tournamentId);
-  const tournament = getTournamentService().getTournamentById(tournamentId);
-  const assignedRoles = auth.getAssignedRoles(tournamentId);
-
-  let firstTsTeams = [];
-  if (tournament && tournament.sports && tournament.sports.length > 0) {
-    firstTsTeams = getTeamService().getTeamsByTournamentSport(tournament.sports[0].ts_id);
-  }
-
-  return {
-    authContext: authContext,
-    tournament: tournament,
-    assignedRoles: assignedRoles,
-    firstTsTeams: firstTsTeams
-  };
-}
-
-/**
- * High-Performance Bundle API for Schedule Page (1 server call instead of 4)
- */
-function apiGetSchedulePageBundle(tournamentId, tsId) {
-  const auth = getAuthService();
-  const email = auth.getCurrentUserEmail();
-
-  const tournamentList = getTournamentService().getTournamentList();
-  
-  let authContext = null;
-  let tournament = null;
-  let matches = [];
-
-  if (tournamentId) {
-    authContext = apiGetAuthContext(tournamentId, email);
-    tournament = getTournamentService().getTournamentById(tournamentId);
-    
-    // Load matches for the specified or first sport
-    const targetTsId = tsId || (tournament && tournament.sports && tournament.sports.length > 0 ? tournament.sports[0].ts_id : '');
-    if (targetTsId) {
-      matches = getMatchService().getMatchesByTournamentSport(targetTsId);
-    }
-  }
-
-  return {
-    tournamentList: tournamentList,
-    authContext: authContext,
-    tournament: tournament,
-    matches: matches
-  };
-}
-
-/**
- * High-Performance Bundle API for Ranking Page (1 server call instead of 3)
- */
-function apiGetRankingPageBundle(tournamentId, tsId) {
-  const tournamentList = getTournamentService().getTournamentList();
-  
-  let tournament = null;
-  let rankings = [];
-
-  if (tournamentId) {
-    tournament = getTournamentService().getTournamentById(tournamentId);
-    
-    const targetTsId = tsId || (tournament && tournament.sports && tournament.sports.length > 0 ? tournament.sports[0].ts_id : '');
-    if (targetTsId) {
-      rankings = getRankingService().getRankingsByTournamentSport(targetTsId);
-    }
-  }
-
-  return {
-    tournamentList: tournamentList,
-    tournament: tournament,
-    rankings: rankings
-  };
-}
-
-/**
- * High-Performance Bundle API for Bracket Page (1 server call instead of 3)
- */
-function apiGetBracketPageBundle(tournamentId, tsId) {
-  const tournamentList = getTournamentService().getTournamentList();
-  
-  let tournament = null;
-  let matches = [];
-
-  if (tournamentId) {
-    tournament = getTournamentService().getTournamentById(tournamentId);
-    
-    const targetTsId = tsId || (tournament && tournament.sports && tournament.sports.length > 0 
-      ? (tournament.sports.find(s => s.format === 'single_elimination') || tournament.sports[0]).ts_id 
-      : '');
-    if (targetTsId) {
-      matches = getMatchService().getMatchesByTournamentSport(targetTsId);
-    }
-  }
-
-  return {
-    tournamentList: tournamentList,
-    tournament: tournament,
-    matches: matches
-  };
 }

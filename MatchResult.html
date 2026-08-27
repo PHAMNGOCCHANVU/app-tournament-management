@@ -1,6 +1,7 @@
 <script>
   /**
    * Match Result Entry View Controller (Referee/Organizer interface)
+   * Enhanced with Multi-Set Score Engine (Pickleball, Badminton) & Match State Machine
    */
   App.views.match_result = function(params = {}) {
     const container = document.getElementById('app-view');
@@ -12,7 +13,7 @@
     }
 
     container.innerHTML = `
-      <div style="max-width: 650px; margin: 0 auto;" id="match-result-wrapper">
+      <div style="max-width: 750px; margin: 0 auto;" id="match-result-wrapper">
         <div class="loader-center"><div class="spinner"></div><p>Đang tải thông tin trận đấu...</p></div>
       </div>
     `;
@@ -20,18 +21,16 @@
     loadMatchResultDetails(matchId);
   };
 
+  let currentMatchData = null;
+
   function loadMatchResultDetails(matchId) {
-    App.server.call('apiGetMatchesByTournamentSport', '')
-      .catch(() => {})
-      .then(() => {
-        // Fetch matches via custom call or filter
-        return App.server.call('apiGetMatchesByTournamentSport', App.state.params.tsId || '');
-      })
+    App.server.call('apiGetMatchesByTournamentSport', App.state.params.tsId || '')
       .then(matches => {
         const match = (matches || []).find(m => m.match_id === matchId);
         if (!match) {
           throw new Error('Không tìm thấy thông tin trận đấu này.');
         }
+        currentMatchData = match;
         renderMatchResultForm(match);
       })
       .catch(err => {
@@ -39,7 +38,7 @@
           <div class="card" style="text-align:center; padding:2rem; color:var(--danger);">
             ${err.message}
             <div style="margin-top:1rem;">
-              <button class="btn btn-secondary" onclick="App.router.navigateTo('schedule')">Quay lại lịch thi đấu</button>
+              <button class="btn btn-secondary" onclick="App.router.navigateTo('schedule', { tournamentId: App.state.params.tournamentId || '' })">Quay lại lịch thi đấu</button>
             </div>
           </div>
         `;
@@ -50,51 +49,198 @@
     const wrapper = document.getElementById('match-result-wrapper');
     if (!wrapper) return;
 
+    // Detect sport scoring type from sport name or categories if available
+    const sportName = App.state.params.sportName || '';
+    const isSetBasedSport = sportName.includes('Pickleball') || sportName.includes('Cầu lông') || sportName.includes('Bóng bàn') || sportName.includes('Bóng chuyền');
+    const isPickleball = sportName.includes('Pickleball');
+
+    // Parse extra data if present
+    let extraObj = {};
+    if (m.notes && m.notes.startsWith('{')) {
+      try { extraObj = JSON.parse(m.notes); } catch (e) {}
+    }
+
     wrapper.innerHTML = `
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5rem;">
-        <h2>⚖️ Nhập Kết Quả Trận Đấu</h2>
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5rem; flex-wrap:wrap; gap:1rem;">
+        <div>
+          <h2>⚖️ Điều Hành & Nhập Kết Quả</h2>
+          <p style="color:var(--text-muted); font-size:0.9rem;">
+            ${m.round_name || 'Vòng ' + m.round} | Sân: ${m.location || 'Sân chính'}
+          </p>
+        </div>
         <button class="btn btn-secondary btn-sm" onclick="App.router.navigateTo('schedule', { tournamentId: '${App.state.params.tournamentId || ''}' })">← Quay lại</button>
       </div>
 
-      <div class="card">
-        <div style="text-align:center; margin-bottom:1.5rem;">
-          <span class="badge badge-in_progress">${m.round_name || 'Vòng ' + m.round}</span>
-          <p style="font-size:0.85rem; color:var(--text-muted); margin-top:0.35rem;">Sân: ${m.location || 'Sân chính'}</p>
-        </div>
+      <!-- Match State Banner & Quick Actions -->
+      <div class="card" style="margin-bottom:1.5rem; background:rgba(30,41,59,0.9);">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem;">
+          <div style="display:flex; align-items:center; gap:0.75rem;">
+            <span style="color:var(--text-muted); font-size:0.9rem;">Trạng thái trận đấu:</span>
+            <span class="badge badge-${m.status}" id="match-status-badge">
+              ${m.status === 'ongoing' ? '🔴 Đang thi đấu (LIVE)' : (m.status === 'waiting_confirmation' ? '⏳ Chờ ký biên bản' : (m.status === 'completed' ? '✅ Đã kết thúc' : '📅 Đã xếp lịch'))}
+            </span>
+          </div>
 
+          <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
+            ${m.status === 'scheduled' ? `
+              <button type="button" class="btn btn-sm btn-primary" onclick="handleQuickStartMatch('${m.match_id}')">
+                ▶️ Bắt Đầu Trận (ONGOING)
+              </button>
+            ` : ''}
+            ${m.status === 'ongoing' ? `
+              <button type="button" class="btn btn-sm btn-warning" onclick="handleQuickSubmitConfirmation('${m.match_id}')">
+                📝 Chờ Ký Biên Bản
+              </button>
+            ` : ''}
+          </div>
+        </div>
+      </div>
+
+      <!-- Score Entry Card -->
+      <div class="card">
         <form id="match-score-form" onsubmit="handleUpdateScoreSubmit(event, '${m.match_id}')">
-          <div class="grid-2" style="align-items:center; gap:2rem; margin-bottom:2rem;">
+          
+          <!-- Overall Summary Score -->
+          <div class="grid-2" style="align-items:center; gap:1.5rem; margin-bottom:1.5rem;">
             <!-- Team 1 Card -->
-            <div style="text-align:center; background:rgba(15,23,42,0.6); padding:1.5rem; border-radius:var(--radius-md); border:1px solid var(--border);">
-              <h3 style="margin-bottom:1rem; font-size:1.3rem;">${m.team1_name}</h3>
+            <div style="text-align:center; background:rgba(15,23,42,0.7); padding:1.25rem; border-radius:var(--radius-md); border:1px solid var(--border);">
+              <h3 style="margin-bottom:0.75rem; font-size:1.2rem; color:#ffffff;">${m.team1_name}</h3>
               <div class="form-group" style="margin-bottom:0;">
-                <label class="form-label">Tỉ số Đội 1</label>
-                <input type="number" class="form-control" id="score-t1" required value="${m.team1_score !== undefined ? m.team1_score : ''}" style="font-size:2rem; text-align:center; font-weight:800; height:60px;">
+                <label class="form-label">${isSetBasedSport ? 'Tổng Set Thắng (Đội 1)' : 'Tỉ số Đội 1'}</label>
+                <input type="number" class="form-control" id="score-t1" required value="${m.team1_score !== undefined ? m.team1_score : ''}" style="font-size:2rem; text-align:center; font-weight:800; height:56px;">
               </div>
             </div>
 
             <!-- Team 2 Card -->
-            <div style="text-align:center; background:rgba(15,23,42,0.6); padding:1.5rem; border-radius:var(--radius-md); border:1px solid var(--border);">
-              <h3 style="margin-bottom:1rem; font-size:1.3rem;">${m.team2_name}</h3>
+            <div style="text-align:center; background:rgba(15,23,42,0.7); padding:1.25rem; border-radius:var(--radius-md); border:1px solid var(--border);">
+              <h3 style="margin-bottom:0.75rem; font-size:1.2rem; color:#ffffff;">${m.team2_name}</h3>
               <div class="form-group" style="margin-bottom:0;">
-                <label class="form-label">Tỉ số Đội 2</label>
-                <input type="number" class="form-control" id="score-t2" required value="${m.team2_score !== undefined ? m.team2_score : ''}" style="font-size:2rem; text-align:center; font-weight:800; height:60px;">
+                <label class="form-label">${isSetBasedSport ? 'Tổng Set Thắng (Đội 2)' : 'Tỉ số Đội 2'}</label>
+                <input type="number" class="form-control" id="score-t2" required value="${m.team2_score !== undefined ? m.team2_score : ''}" style="font-size:2rem; text-align:center; font-weight:800; height:56px;">
               </div>
             </div>
           </div>
 
+          <!-- Multi-Set Detail Entry (For Pickleball, Badminton, Volleyball, Table tennis) -->
+          ${isSetBasedSport ? `
+            <div style="background:rgba(15,23,42,0.5); padding:1.25rem; border-radius:var(--radius-md); border:1px solid var(--border-highlight); margin-bottom:1.5rem;">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.75rem;">
+                <h4 style="color:var(--accent);">🎾 Điểm Chi Tiết Từng Set</h4>
+                <span style="font-size:0.8rem; color:var(--text-muted);">(Tự động tính tổng Set thắng)</span>
+              </div>
+
+              <table class="set-score-table">
+                <thead>
+                  <tr>
+                    <th style="text-align:left; width:35%;">Đội / Vận Động Viên</th>
+                    <th style="width:20%;">Set 1</th>
+                    <th style="width:20%;">Set 2</th>
+                    <th style="width:20%;">Set 3</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td style="font-weight:600; color:#fff;">${m.team1_name}</td>
+                    <td><input type="number" class="set-score-input" id="set1-t1" min="0" oninput="recalcSetsWon()"></td>
+                    <td><input type="number" class="set-score-input" id="set2-t1" min="0" oninput="recalcSetsWon()"></td>
+                    <td><input type="number" class="set-score-input" id="set3-t1" min="0" oninput="recalcSetsWon()"></td>
+                  </tr>
+                  <tr>
+                    <td style="font-weight:600; color:#fff;">${m.team2_name}</td>
+                    <td><input type="number" class="set-score-input" id="set1-t2" min="0" oninput="recalcSetsWon()"></td>
+                    <td><input type="number" class="set-score-input" id="set2-t2" min="0" oninput="recalcSetsWon()"></td>
+                    <td><input type="number" class="set-score-input" id="set3-t2" min="0" oninput="recalcSetsWon()"></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          ` : ''}
+
+          <!-- Pickleball Extra Strategy Data -->
+          ${isPickleball ? `
+            <div style="background:rgba(15,23,42,0.4); padding:1rem; border-radius:var(--radius-md); border:1px solid var(--border); margin-bottom:1.5rem;">
+              <h4 style="color:var(--secondary); margin-bottom:0.75rem; font-size:0.95rem;">🏸 Cấu hình lượt giao bóng Pickleball (Strategy Data)</h4>
+              <div class="grid-2">
+                <div class="form-group" style="margin-bottom:0;">
+                  <label class="form-label" style="font-size:0.85rem;">Người giao bóng (Server)</label>
+                  <select class="form-control" id="pb-server">
+                    <option value="1">Lượt giao bóng 1 (Server 1)</option>
+                    <option value="2">Lượt giao bóng 2 (Server 2)</option>
+                  </select>
+                </div>
+                <div class="form-group" style="margin-bottom:0;">
+                  <label class="form-label" style="font-size:0.85rem;">Vị trí sân</label>
+                  <select class="form-control" id="pb-position">
+                    <option value="right">Bên Phải (Right Court)</option>
+                    <option value="left">Bên Trái (Left Court)</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          ` : ''}
+
           <div class="form-group" style="margin-bottom:1.5rem;">
-            <label class="form-label">Ghi chú của Trọng tài (Thẻ phạt, sự cố, bù giờ...)</label>
-            <textarea class="form-control" id="match-notes" rows="3" placeholder="Nhập ghi chú trận đấu...">${m.notes || ''}</textarea>
+            <label class="form-label">Ghi chú của Trọng tài (Thẻ phạt, sự cố, biên bản...)</label>
+            <textarea class="form-control" id="match-notes" rows="2" placeholder="Nhập ghi chú trận đấu...">${m.notes || ''}</textarea>
           </div>
 
-          <div style="display:flex; justify-content:flex-end; gap:1rem;">
+          <div style="display:flex; justify-content:flex-end; gap:1rem; flex-wrap:wrap;">
             <button type="button" class="btn btn-secondary" onclick="App.router.navigateTo('schedule', { tournamentId: '${App.state.params.tournamentId || ''}' })">Hủy</button>
-            <button type="submit" class="btn btn-primary" id="btn-save-score">💾 Lưu Kết Quả & Cập Nhật Bảng Xếp Hạng</button>
+            <button type="submit" class="btn btn-primary" id="btn-save-score">💾 Lưu Kết Quả & Hoàn Thành Trận</button>
           </div>
         </form>
       </div>
     `;
+  }
+
+  function recalcSetsWon() {
+    const s1_t1 = parseInt(document.getElementById('set1-t1')?.value || 0, 10);
+    const s1_t2 = parseInt(document.getElementById('set1-t2')?.value || 0, 10);
+    const s2_t1 = parseInt(document.getElementById('set2-t1')?.value || 0, 10);
+    const s2_t2 = parseInt(document.getElementById('set2-t2')?.value || 0, 10);
+    const s3_t1 = parseInt(document.getElementById('set3-t1')?.value || 0, 10);
+    const s3_t2 = parseInt(document.getElementById('set3-t2')?.value || 0, 10);
+
+    let setsWonT1 = 0;
+    let setsWonT2 = 0;
+
+    if (s1_t1 > 0 || s1_t2 > 0) {
+      if (s1_t1 > s1_t2) setsWonT1++;
+      else if (s1_t2 > s1_t1) setsWonT2++;
+    }
+    if (s2_t1 > 0 || s2_t2 > 0) {
+      if (s2_t1 > s2_t2) setsWonT1++;
+      else if (s2_t2 > s2_t1) setsWonT2++;
+    }
+    if (s3_t1 > 0 || s3_t2 > 0) {
+      if (s3_t1 > s3_t2) setsWonT1++;
+      else if (s3_t2 > s3_t1) setsWonT2++;
+    }
+
+    const t1Input = document.getElementById('score-t1');
+    const t2Input = document.getElementById('score-t2');
+    if (t1Input && t2Input) {
+      t1Input.value = setsWonT1;
+      t2Input.value = setsWonT2;
+    }
+  }
+
+  function handleQuickStartMatch(matchId) {
+    App.server.call('apiStartMatch', matchId)
+      .then(() => {
+        App.toast.show('Đã bắt đầu trận đấu! Trạng thái: ONGOING (LIVE)', 'success');
+        loadMatchResultDetails(matchId);
+      })
+      .catch(err => App.toast.show('Lỗi: ' + err.message, 'error'));
+  }
+
+  function handleQuickSubmitConfirmation(matchId) {
+    App.server.call('apiSubmitForConfirmation', matchId)
+      .then(() => {
+        App.toast.show('Đã chuyển trạng thái sang Chờ Ký Biên Bản!', 'info');
+        loadMatchResultDetails(matchId);
+      })
+      .catch(err => App.toast.show('Lỗi: ' + err.message, 'error'));
   }
 
   function handleUpdateScoreSubmit(event, matchId) {
@@ -108,6 +254,16 @@
     const t2Score = document.getElementById('score-t2').value;
     const notes = document.getElementById('match-notes').value;
 
+    let extraData = {};
+    const pbServer = document.getElementById('pb-server');
+    const pbPosition = document.getElementById('pb-position');
+    if (pbServer && pbPosition) {
+      extraData = {
+        server: pbServer.value,
+        position: pbPosition.value
+      };
+    }
+
     App.server.call('apiUpdateMatchResult', matchId, t1Score, t2Score, notes)
       .then(res => {
         App.toast.show('Cập nhật tỉ số trận đấu và bảng xếp hạng thành công!', 'success');
@@ -116,7 +272,7 @@
       .catch(err => {
         App.toast.show('Lỗi khi lưu kết quả: ' + err.message, 'error');
         submitBtn.disabled = false;
-        submitBtn.innerText = '💾 Lưu Kết Quả & Cập Nhật Bảng Xếp Hạng';
+        submitBtn.innerText = '💾 Lưu Kết Quả & Hoàn Thành Trận';
       });
   }
 </script>

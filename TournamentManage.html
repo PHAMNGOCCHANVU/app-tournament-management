@@ -72,6 +72,8 @@
           ${t.status === 'draft' ? `<button class="btn btn-success btn-sm" onclick="changeTournamentStatus('${t.tournament_id}', 'open')">🔓 Mở Đăng Ký</button>` : ''}
           ${t.status === 'open' ? `<button class="btn btn-primary btn-sm" onclick="changeTournamentStatus('${t.tournament_id}', 'in_progress')">▶️ Bắt Đầu Thi Đấu</button>` : ''}
           ${t.status === 'in_progress' ? `<button class="btn btn-secondary btn-sm" onclick="changeTournamentStatus('${t.tournament_id}', 'completed')">🏁 Kết Thúc Giải</button>` : ''}
+          ${t.status === 'completed' ? `<button class="btn btn-warning btn-sm" onclick="closeAndArchiveTournament('${t.tournament_id}')">🔒 Khóa Lưu Trữ (Archive)</button>` : ''}
+          <button class="btn btn-primary btn-sm" onclick="openTournamentSummaryModal('${t.tournament_id}')">🏆 Báo Cáo Tổng Kết</button>
           ${t.status === 'draft' ? `<button class="btn btn-danger btn-sm" onclick="deleteCurrentTournament('${t.tournament_id}')">🗑️ Xóa Giải</button>` : ''}
           <button class="btn btn-secondary btn-sm" onclick="App.router.navigateTo('schedule', { tournamentId: '${t.tournament_id}' })">👀 Xem Lịch & Kết Quả</button>
         </div>
@@ -82,11 +84,15 @@
         <h3 style="margin-bottom:1rem; color:var(--primary);">Danh sách Môn Thi Đấu & Sinh Lịch</h3>
         
         <div style="display:flex; gap:0.75rem; overflow-x:auto; margin-bottom:1.5rem; padding-bottom:0.5rem;" id="ts-tab-buttons">
-          ${t.sports.map(s => `
-            <button class="btn btn-sm ${s.ts_id === currentActiveTsId ? 'btn-primary' : 'btn-secondary'}" onclick="selectManageTsTab('${s.ts_id}')">
-              ${s.sport_name} (${s.registered_teams_count}/${s.max_teams} đội)
-            </button>
-          `).join('')}
+          ${t.sports.map(s => {
+            const catLabel = s.category ? ` - ${CATEGORY_LABELS[s.category] || s.category}` : '';
+            const lvlLabel = s.skill_level ? ` - Hạng ${s.skill_level}` : '';
+            return `
+              <button class="btn btn-sm ${s.ts_id === currentActiveTsId ? 'btn-primary' : 'btn-secondary'}" onclick="selectManageTsTab('${s.ts_id}')">
+                ${s.sport_name}${catLabel}${lvlLabel} (${s.registered_teams_count}/${s.max_teams} đội)
+              </button>
+            `;
+          }).join('')}
         </div>
 
         <!-- Sport Specific Management Panel -->
@@ -95,23 +101,53 @@
         </div>
       </div>
 
-      <!-- Assign & Manage Referee Section -->
-      <div class="card">
-        <h3 style="margin-bottom:1rem; color:var(--accent);">Phân Quyền Giám Sát / Trọng Tài & Thu Hồi Quyền</h3>
+      <!-- Bulk Import CSV Section -->
+      <div class="card" style="margin-bottom:1.5rem;">
+        <h3 style="margin-bottom:1rem; color:var(--success);">📋 Import Danh Sách Đăng Ký Hàng Loạt (CSV / Excel)</h3>
         
-        <div class="grid-2" style="margin-bottom:1.5rem;">
-          <div class="form-group">
-            <label class="form-label">Nhập Email Trọng tài cần gán quyền</label>
-            <input type="email" class="form-control" id="referee-email-input" placeholder="trongtai@gmail.com">
+        <div style="display:flex; flex-wrap:wrap; gap:1rem; margin-bottom:1rem; align-items:flex-start;">
+          <div style="flex:1; min-width:280px;">
+            <label class="form-label" style="font-weight:bold; color:var(--primary);">Cách 1: Chọn File CSV (.csv)</label>
+            <input type="file" id="csv-file-input" accept=".csv" class="form-control" onchange="handleCsvFileSelect(event)" style="background:rgba(15,23,42,0.3); border-color:var(--border);">
           </div>
-          <div style="display:flex; align-items:flex-end; margin-bottom:1.25rem;">
-            <button class="btn btn-primary" onclick="assignRefereeRole('${t.tournament_id}')">➕ Gán Vai Trò Referee</button>
+          <div style="flex:2; min-width:320px;">
+            <label class="form-label" style="font-weight:bold; color:var(--secondary);">Cách 2: Dán nội dung CSV hoặc từ Google Sheets</label>
+            <textarea class="form-control" id="csv-import-textarea" rows="2" placeholder="Tên Đội,Email Đội Trưởng,Tên VĐV,Email VĐV,Giới tính,Số Áo,Vị Trí&#10;FC Alpha,captain@g.com,Nguyễn Văn A,a@g.com,Nam,10,Tiền vệ"></textarea>
           </div>
         </div>
 
-        <h4 style="margin-bottom:0.75rem;">Danh Sách Trọng Tài Đã Gán Quyền</h4>
+        <div style="display:flex; gap:1rem; align-items:center;">
+          <button class="btn btn-secondary btn-sm" onclick="handlePreviewCsvImport()">🔍 Kiểm tra dữ liệu (Validate)</button>
+          <button class="btn btn-success btn-sm" id="btn-do-import-csv" onclick="handleDoCsvImport()" disabled>📥 Xác nhận Import</button>
+        </div>
+
+        <div id="csv-preview-results" style="margin-top:1rem; display:none;"></div>
+      </div>
+
+      <!-- Assign & Manage Roles Section -->
+      <div class="card">
+        <h3 style="margin-bottom:1rem; color:var(--accent);">Phân Quyền Ban Biên Tập (Editor) & Trọng Tài (Referee)</h3>
+        
+        <div class="grid-3" style="margin-bottom:1.5rem;">
+          <div class="form-group">
+            <label class="form-label">Email tài khoản</label>
+            <input type="email" class="form-control" id="assigned-role-email-input" placeholder="user@gmail.com">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Chọn Vai trò</label>
+            <select class="form-control" id="assigned-role-select">
+              <option value="editor">Biên tập viên (Editor)</option>
+              <option value="referee">Trọng tài (Referee)</option>
+            </select>
+          </div>
+          <div style="display:flex; align-items:flex-end; margin-bottom:1.25rem;">
+            <button class="btn btn-primary" onclick="assignUserRole('${t.tournament_id}')">➕ Gán Vai Trò</button>
+          </div>
+        </div>
+
+        <h4 style="margin-bottom:0.75rem;">Danh Sách Vai Trò Đã Gán Trong Giải</h4>
         <div id="assigned-referees-list-container">
-          <div class="loader-center"><div class="spinner"></div><p>Đang tải danh sách trọng tài...</p></div>
+          <div class="loader-center"><div class="spinner"></div><p>Đang tải danh sách vai trò...</p></div>
         </div>
       </div>
     `;
@@ -120,7 +156,7 @@
   function selectManageTsTab(tsId) {
     currentActiveTsId = tsId;
     renderTournamentManage();
-    loadAssignedReferees(currentManageTournament.tournament_id);
+    loadAssignedRoles(currentManageTournament.tournament_id);
     loadTsTeamsAndFixturesPanel(tsId);
   }
 
@@ -146,11 +182,13 @@
     if (!currentTs) return;
 
     const approvedCount = teams.filter(t => t.status === 'approved').length;
+    const catLabel = currentTs.category ? ` | <strong>Hạng mục:</strong> ${CATEGORY_LABELS[currentTs.category] || currentTs.category}` : '';
+    const lvlLabel = currentTs.skill_level ? ` | <strong>Trình độ:</strong> Hạng ${currentTs.skill_level}` : '';
 
     panel.innerHTML = `
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem; background:rgba(15,23,42,0.5); padding:1rem; border-radius:var(--radius-md);">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem; background:rgba(15,23,42,0.5); padding:1rem; border-radius:var(--radius-md); flex-wrap:wrap; gap:1rem;">
         <div>
-          <p><strong>Thể thức:</strong> ${currentTs.format === 'round_robin' ? 'Vòng tròn' : 'Loại trực tiếp'}</p>
+          <p><strong>Thể thức:</strong> ${currentTs.format === 'round_robin' ? 'Vòng tròn' : 'Loại trực tiếp'}${catLabel}${lvlLabel}</p>
           <p><strong>Số đội đã duyệt:</strong> ${approvedCount} / ${currentTs.max_teams} đội (Tối thiểu: ${currentTs.min_teams})</p>
         </div>
         
@@ -199,20 +237,20 @@
     `;
   }
 
-  function loadAssignedReferees(tournamentId) {
+  function loadAssignedRoles(tournamentId) {
     App.server.call('apiGetAssignedRoles', tournamentId)
       .then(roles => {
-        renderAssignedRefereesList((roles || []).filter(r => r.role === 'referee'));
+        renderAssignedRefereesList(roles || []);
       })
-      .catch(err => console.log('Lỗi tải trọng tài:', err));
+      .catch(err => console.log('Lỗi tải vai trò:', err));
   }
 
-  function renderAssignedRefereesList(referees) {
+  function renderAssignedRefereesList(roles) {
     const container = document.getElementById('assigned-referees-list-container');
     if (!container) return;
 
-    if (referees.length === 0) {
-      container.innerHTML = `<p style="color:var(--text-muted); font-size:0.9rem; padding:0.5rem 0;">Chưa gán trọng tài nào cho giải đấu này.</p>`;
+    if (roles.length === 0) {
+      container.innerHTML = `<p style="color:var(--text-muted); font-size:0.9rem; padding:0.5rem 0;">Chưa gán vai trò nào khác trong giải đấu này.</p>`;
       return;
     }
 
@@ -221,21 +259,23 @@
         <table class="table">
           <thead>
             <tr>
-              <th>Email Trọng Tài</th>
+              <th>Email</th>
+              <th>Vai Trò</th>
               <th>Ngày Gán</th>
               <th>Người Gán</th>
               <th style="text-align:right;">Thao Tác</th>
             </tr>
           </thead>
           <tbody>
-            ${referees.map(r => `
+            ${roles.map(r => `
               <tr>
                 <td><strong>${r.user_email}</strong></td>
+                <td><span class="badge badge-open">${r.role}</span></td>
                 <td>${formatDate(r.assigned_at)}</td>
                 <td>${r.assigned_by || 'Organizer'}</td>
                 <td style="text-align:right;">
-                  <button class="btn btn-sm btn-danger" onclick="revokeRefereeRole('${currentManageTournament.tournament_id}', '${r.user_email}')">
-                    🔴 Thu hồi quyền (Revoke)
+                  <button class="btn btn-sm btn-danger" onclick="revokeUserRole('${currentManageTournament.tournament_id}', '${r.user_email}', '${r.role}')">
+                    🔴 Thu hồi (Revoke)
                   </button>
                 </td>
               </tr>
@@ -293,33 +333,143 @@
     });
   }
 
-  function assignRefereeRole(tournamentId) {
-    const emailInput = document.getElementById('referee-email-input');
+  function assignUserRole(tournamentId) {
+    const emailInput = document.getElementById('assigned-role-email-input');
+    const roleSelect = document.getElementById('assigned-role-select');
     const targetEmail = emailInput ? emailInput.value.trim() : '';
+    const role = roleSelect ? roleSelect.value : 'referee';
 
     if (!targetEmail) {
-      App.toast.show('Vui lòng nhập Email của Trọng tài.', 'error');
+      App.toast.show('Vui lòng nhập Email người dùng.', 'error');
       return;
     }
 
-    App.server.call('apiAssignRole', tournamentId, targetEmail, 'referee')
+    App.server.call('apiAssignRole', tournamentId, targetEmail, role)
       .then(() => {
-        App.toast.show(`Đã gán vai trò Referee cho ${targetEmail}!`, 'success');
+        App.toast.show(`Đã gán vai trò ${role} cho ${targetEmail}!`, 'success');
         emailInput.value = '';
-        loadAssignedReferees(tournamentId);
+        loadAssignedRoles(tournamentId);
       })
       .catch(err => App.toast.show('Lỗi gán vai trò: ' + err.message, 'error'));
   }
 
-  function revokeRefereeRole(tournamentId, targetEmail) {
-    App.modal.open('Thu Hồi Quyền Trọng Tài', `Bạn có chắc chắn muốn thu hồi quyền Trọng tài của email <strong>${targetEmail}</strong>?`, () => {
-      App.server.call('apiRevokeRole', tournamentId, targetEmail, 'referee')
+  function revokeUserRole(tournamentId, targetEmail, role) {
+    App.modal.open('Thu Hồi Vai Trò', `Bạn có chắc chắn muốn thu hồi vai trò <strong>${role}</strong> của email <strong>${targetEmail}</strong>?`, () => {
+      App.server.call('apiRevokeRole', tournamentId, targetEmail, role)
         .then(res => {
-          App.toast.show(res.message || 'Đã thu hồi quyền Trọng tài!', 'info');
-          loadAssignedReferees(tournamentId);
+          App.toast.show(res.message || 'Đã thu hồi vai trò thành công!', 'info');
+          loadAssignedRoles(tournamentId);
         })
         .catch(err => App.toast.show('Lỗi thu hồi quyền: ' + err.message, 'error'));
     });
+  }
+
+  let currentParsedCsvRows = [];
+
+  function parseCsvString(text) {
+    const lines = text.split(/\r?\n/).filter(line => line.trim() !== '');
+    if (lines.length <= 1) return [];
+
+    const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
+    const rows = [];
+
+    for (let i = 1; i < lines.length; i++) {
+      const values = lines[i].split(',').map(v => v.trim().replace(/^"|"$/g, ''));
+      const obj = {};
+      headers.forEach((h, idx) => {
+        obj[h] = values[idx] !== undefined ? values[idx] : '';
+      });
+      rows.push(obj);
+    }
+    return rows;
+  }
+
+  function handlePreviewCsvImport() {
+    const text = document.getElementById('csv-import-textarea').value;
+    const previewContainer = document.getElementById('csv-preview-results');
+    const importBtn = document.getElementById('btn-do-import-csv');
+
+    if (!text.trim()) {
+      App.toast.show('Vui lòng dán nội dung CSV vào ô thoại.', 'error');
+      return;
+    }
+
+    currentParsedCsvRows = parseCsvString(text);
+    if (currentParsedCsvRows.length === 0) {
+      App.toast.show('Không thể phân tích dữ liệu CSV (Yêu cầu có dòng tiêu đề).', 'error');
+      return;
+    }
+
+    if (!currentActiveTsId) {
+      App.toast.show('Vui lòng chọn 1 Môn thi đấu từ danh sách tab bên trên trước khi import.', 'error');
+      return;
+    }
+
+    App.server.call('apiValidateImportData', currentActiveTsId, currentParsedCsvRows)
+      .then(res => {
+        previewContainer.style.display = 'block';
+        if (res.valid) {
+          importBtn.disabled = false;
+          previewContainer.innerHTML = `
+            <div style="background:rgba(34,197,94,0.1); border:1px solid var(--success); padding:1rem; border-radius:var(--radius-md);">
+              <h4 style="color:var(--success);">✅ Dữ liệu hợp lệ! Đã phát hiện ${res.parsedTeams.length} đội:</h4>
+              <ul style="margin-left:1.5rem; margin-top:0.5rem;">
+                ${res.parsedTeams.map(t => `<li><strong>${t.name}</strong> (${t.players.length} VĐV)</li>`).join('')}
+              </ul>
+            </div>
+          `;
+        } else {
+          importBtn.disabled = true;
+          previewContainer.innerHTML = `
+            <div style="background:rgba(239,68,68,0.1); border:1px solid var(--danger); padding:1rem; border-radius:var(--radius-md);">
+              <h4 style="color:var(--danger);">❌ Phát hiện lỗi trong dữ liệu CSV:</h4>
+              <ul style="margin-left:1.5rem; margin-top:0.5rem; color:var(--danger);">
+                ${res.errors.map(err => `<li>${err}</li>`).join('')}
+              </ul>
+            </div>
+          `;
+        }
+      })
+      .catch(err => App.toast.show('Lỗi kiểm tra dữ liệu: ' + err.message, 'error'));
+  }
+
+  function handleDoCsvImport() {
+    if (!currentActiveTsId || currentParsedCsvRows.length === 0) return;
+
+    const importBtn = document.getElementById('btn-do-import-csv');
+    importBtn.disabled = true;
+    importBtn.innerText = '⏳ Đang import...';
+
+    App.server.call('apiImportTeamsFromCsv', currentActiveTsId, currentParsedCsvRows)
+      .then(res => {
+        App.toast.show(res.message || 'Import danh sách đội thành công!', 'success');
+        document.getElementById('csv-import-textarea').value = '';
+        document.getElementById('csv-preview-results').style.display = 'none';
+        importBtn.innerText = '📥 Xác nhận Import';
+        loadTournamentManageData(currentManageTournament.tournament_id);
+      })
+      .catch(err => {
+        App.toast.show('Lỗi import: ' + err.message, 'error');
+        importBtn.disabled = false;
+        importBtn.innerText = '📥 Xác nhận Import';
+      });
+  }
+
+  function handleCsvFileSelect(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      const text = e.target.result;
+      const textarea = document.getElementById('csv-import-textarea');
+      if (textarea) {
+        textarea.value = text;
+        App.toast.show('Đã tải nội dung file CSV. Tiến hành validate...', 'success');
+        handlePreviewCsvImport();
+      }
+    };
+    reader.readAsText(file);
   }
 
   function deleteCurrentTournament(tournamentId) {
@@ -331,5 +481,81 @@
         })
         .catch(err => App.toast.show('Lỗi xóa giải: ' + err.message, 'error'));
     });
+  }
+
+  function closeAndArchiveTournament(tournamentId) {
+    App.modal.open('Khóa Lưu Trữ Giải Đấu', 'Bạn có chắc chắn muốn KHÓA giải đấu này? Dữ liệu giải đấu sẽ chuyển sang chế độ Read-Only và không thể chỉnh sửa kết quả được nữa.', () => {
+      App.server.call('apiCloseTournament', tournamentId)
+        .then(() => {
+          App.toast.show('Đã khóa và lưu trữ giải đấu thành công!', 'success');
+          loadTournamentManageData(tournamentId);
+        })
+        .catch(err => App.toast.show('Lỗi khóa giải đấu: ' + err.message, 'error'));
+    });
+  }
+
+  function openTournamentSummaryModal(tournamentId) {
+    App.server.call('apiGetTournamentSummary', tournamentId)
+      .then(summary => {
+        if (!summary || !summary.tournament) {
+          throw new Error('Không thể tải dữ liệu báo cáo giải đấu.');
+        }
+
+        const t = summary.tournament;
+        const sports = summary.sports || [];
+
+        let sportsHtml = '';
+        sports.forEach((sp, idx) => {
+          const rankings = sp.rankings || [];
+          const top3 = rankings.slice(0, 3);
+
+          sportsHtml += `
+            <div style="background:rgba(15,23,42,0.6); padding:1rem; border-radius:var(--radius-md); border:1px solid var(--border); margin-bottom:1rem;">
+              <h4 style="color:var(--primary); margin-bottom:0.5rem;">Môn thi đấu #${idx + 1} (${sp.format === 'round_robin' ? 'Vòng tròn' : 'Loại trực tiếp'})</h4>
+              <p style="font-size:0.9rem; color:var(--text-muted); margin-bottom:0.75rem;">
+                Tiến độ: <strong>${sp.completed_matches}/${sp.total_matches}</strong> trận đã hoàn tất.
+              </p>
+
+              ${top3.length > 0 ? `
+                <div style="display:flex; gap:0.5rem; flex-wrap:wrap; margin-bottom:0.5rem;">
+                  ${top3[0] ? `<span class="badge" style="background:#f59e0b; color:#000;">🥇 Vô Địch: ${top3[0].team_name}</span>` : ''}
+                  ${top3[1] ? `<span class="badge" style="background:#94a3b8; color:#000;">🥈 Á Quân: ${top3[1].team_name}</span>` : ''}
+                  ${top3[2] ? `<span class="badge" style="background:#b45309; color:#fff;">🥉 Hạng Ba: ${top3[2].team_name}</span>` : ''}
+                </div>
+              ` : '<p style="color:var(--text-muted); font-size:0.85rem;">Chưa có kết quả xếp hạng.</p>'}
+            </div>
+          `;
+        });
+
+        const modalHtml = `
+          <div id="summary-report-print-area">
+            <div style="text-align:center; border-bottom:1px solid var(--border); padding-bottom:1rem; margin-bottom:1.5rem;">
+              <h2 style="font-size:1.6rem; color:#ffffff; margin-bottom:0.25rem;">🏆 BÁO CÁO TỔNG KẾT GIẢI ĐẤU</h2>
+              <h3 style="color:var(--primary);">${t.name}</h3>
+              <p style="color:var(--text-muted); font-size:0.9rem;">
+                📍 ${t.location} | 📅 ${formatDate(t.start_date)} - ${formatDate(t.end_date)}
+              </p>
+              <p style="font-size:0.85rem; color:var(--secondary); font-weight:bold; margin-top:0.25rem;">
+                Trạng thái: ${t.status.toUpperCase()}
+              </p>
+            </div>
+
+            <div style="margin-bottom:1.5rem;">
+              <h4 style="margin-bottom:0.75rem;">📊 Tổng kết các môn thi đấu:</h4>
+              ${sportsHtml || '<p style="color:var(--text-muted);">Không có dữ liệu môn thi đấu.</p>'}
+            </div>
+
+            <div style="display:flex; justify-content:space-between; align-items:center; border-top:1px solid var(--border); padding-top:1rem; font-size:0.8rem; color:var(--text-muted);" class="no-print">
+              <span>Báo cáo tạo lúc: ${formatDate(summary.generated_at)}</span>
+              <div style="display:flex; gap:0.5rem;">
+                <button class="btn btn-primary btn-sm" onclick="window.print()">🖨️ In Báo Cáo / Xuất PDF</button>
+              </div>
+            </div>
+          </div>
+        `;
+
+        App.modal.open(`Báo Cáo Tổng Kết: ${t.name}`, modalHtml, null, 'Đóng');
+      })
+      .catch(err => App.toast.show('Lỗi tải báo cáo: ' + err.message, 'error'));
   }
 </script>

@@ -68,7 +68,10 @@
     const tsSelect = document.getElementById('bracket-ts-select');
     tsSelect.innerHTML = `<option value="">-- Chọn Môn Thi Đấu --</option>`;
 
-    if (!selectedBracketTournamentId) return;
+    if (!selectedBracketTournamentId) {
+      App.livescore.stop();
+      return;
+    }
 
     App.server.call('apiGetTournamentById', selectedBracketTournamentId)
       .then(t => {
@@ -89,6 +92,7 @@
         tsSelect.innerHTML = eliminationSports.map(s => `<option value="${s.ts_id}">${s.sport_name}</option>`).join('');
         selectedBracketTsId = eliminationSports[0].ts_id;
         onBracketTsChange();
+        App.livescore.init(selectedBracketTournamentId);
       });
   }
 
@@ -148,14 +152,14 @@
                   <div style="background:rgba(15,23,42,0.8); border:1px solid ${m.status === 'completed' ? 'var(--secondary)' : 'var(--border)'}; border-radius:var(--radius-md); padding:0.75rem; box-shadow:var(--shadow-sm);">
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.35rem; font-size:0.85rem; ${m.winner_team_id === m.team1_id ? 'color:var(--secondary); font-weight:700;' : ''}">
                       <span>${m.team1_name}</span>
-                      <span>${m.status === 'completed' ? m.team1_score : ''}</span>
+                      <span data-bracket-t1-score="${m.match_id}" style="font-weight:700; color:var(--accent);">${['completed', 'ongoing', 'waiting_confirmation'].includes(m.status) ? m.team1_score : ''}</span>
                     </div>
 
                     <div style="height:1px; background:var(--border); margin:0.35rem 0;"></div>
 
                     <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.85rem; ${m.winner_team_id === m.team2_id ? 'color:var(--secondary); font-weight:700;' : ''}">
                       <span>${m.team2_name}</span>
-                      <span>${m.status === 'completed' ? m.team2_score : ''}</span>
+                      <span data-bracket-t2-score="${m.match_id}" style="font-weight:700; color:var(--accent);">${['completed', 'ongoing', 'waiting_confirmation'].includes(m.status) ? m.team2_score : ''}</span>
                     </div>
                   </div>
                 `).join('')}

@@ -1,5 +1,5 @@
 /**
- * RankingService.gs - Standings Calculation, Points Calculation & Tiebreaker Strategy Pattern
+ * Mod_Progression.js - Module 6: Standings & Progression Tracker (Tiebreaker Strategy + Bracket Advancement)
  */
 
 /**
@@ -26,7 +26,7 @@ class DefaultTiebreakerStrategy extends BaseTiebreakerStrategy {
         (m.team1_id === b.team_id && m.team2_id === a.team_id)
       );
 
-      if (h2hMatch && h2hMatch.status === 'completed' && h2hMatch.winner_team_id && h2hMatch.winner_team_id !== 'DRAW') {
+      if (h2hMatch && h2hMatch.status === MATCH_STATUS.COMPLETED && h2hMatch.winner_team_id && h2hMatch.winner_team_id !== 'DRAW') {
         if (h2hMatch.winner_team_id === a.team_id) return -1;
         if (h2hMatch.winner_team_id === b.team_id) return 1;
       }
@@ -37,13 +37,15 @@ class DefaultTiebreakerStrategy extends BaseTiebreakerStrategy {
 }
 
 /**
- * RankingService Class
+ * Progression & Standings Service
  */
-class RankingService {
+class ProgressionService {
   get rankingRepo() { return new BaseRepository('Ranking', 'ranking_id'); }
   get tsRepo() { return new BaseRepository('TournamentSport', 'ts_id'); }
   get teamRepo() { return new BaseRepository('Team', 'team_id'); }
   get matchRepo() { return new BaseRepository('Match', 'match_id'); }
+  get tournamentRepo() { return new BaseRepository('Tournament', 'tournament_id'); }
+
   get tiebreakerStrategy() {
     if (!this._strategy) this._strategy = new DefaultTiebreakerStrategy();
     return this._strategy;
@@ -56,9 +58,9 @@ class RankingService {
     const ts = this.tsRepo.getById(tsId);
     if (!ts) return [];
 
-    const approvedTeams = this.teamRepo.where('ts_id', tsId).filter(t => t.status === 'approved');
+    const approvedTeams = this.teamRepo.where('ts_id', tsId).filter(t => t.status === TEAM_STATUS.APPROVED);
     const matches = this.matchRepo.where('ts_id', tsId);
-    const completedMatches = matches.filter(m => m.status === 'completed');
+    const completedMatches = matches.filter(m => m.status === MATCH_STATUS.COMPLETED);
 
     const pointsWin = !isNaN(Number(ts.points_for_win)) ? Number(ts.points_for_win) : 3;
     const pointsDraw = !isNaN(Number(ts.points_for_draw)) ? Number(ts.points_for_draw) : 1;
@@ -173,24 +175,91 @@ class RankingService {
       });
     }).sort((a, b) => Number(a.rank) - Number(b.rank));
   }
+
+  /**
+   * Advance Winner in Single Elimination Bracket Tree
+   */
+  advanceBracket(completedMatchId) {
+    const match = this.matchRepo.getById(completedMatchId);
+    if (!match || !match.winner_team_id) return;
+
+    const allMatches = this.matchRepo.where('ts_id', match.ts_id);
+    const currentRoundMatches = allMatches.filter(m => Number(m.round) === Number(match.round))
+                                         .sort((a, b) => a.match_id.localeCompare(b.match_id));
+    
+    const currentMatchIndex = currentRoundMatches.findIndex(m => m.match_id === completedMatchId);
+    if (currentMatchIndex === -1) return;
+
+    const nextRoundNumber = Number(match.round) + 1;
+    const nextRoundMatches = allMatches.filter(m => Number(m.round) === nextRoundNumber)
+                                       .sort((a, b) => a.match_id.localeCompare(b.match_id));
+
+    if (nextRoundMatches.length === 0) {
+      // Final Match completed!
+      const ts = this.tsRepo.getById(match.ts_id);
+      if (ts) {
+        emitEvent(SYSTEM_EVENTS.TOURNAMENT_COMPLETED, {
+          tournamentId: ts.tournament_id,
+          tsId: ts.ts_id,
+          championTeamId: match.winner_team_id
+        });
+      }
+      return;
+    }
+
+    const targetMatchIndex = Math.floor(currentMatchIndex / 2);
+    const targetMatch = nextRoundMatches[targetMatchIndex];
+    if (!targetMatch) return;
+
+    const isFirstSlot = (currentMatchIndex % 2 === 0);
+    const updateData = {};
+
+    if (isFirstSlot) {
+      updateData.team1_id = match.winner_team_id;
+    } else {
+      updateData.team2_id = match.winner_team_id;
+    }
+
+    this.matchRepo.update(targetMatch.match_id, updateData);
+  }
+
+  /**
+   * EventBus Handler: MatchCompletedEvent listener
+   */
+  handleMatchCompleted(payload) {
+    if (!payload || !payload.tsId) return;
+
+    // 1. Recalculate standings
+    this.calculateRankings(payload.tsId);
+
+    // 2. If single elimination, advance bracket
+    if (payload.format === 'single_elimination' && payload.matchId) {
+      this.advanceBracket(payload.matchId);
+    }
+  }
 }
 
-// Singleton Helper (global variable for V8 reliability)
-let _rankingServiceInstance = null;
-function getRankingService() {
-  if (!_rankingServiceInstance) {
-    _rankingServiceInstance = new RankingService();
+// Singleton Instance Helper
+let _progressionServiceInstance = null;
+function getProgressionService() {
+  if (!_progressionServiceInstance) {
+    _progressionServiceInstance = new ProgressionService();
   }
-  return _rankingServiceInstance;
+  return _progressionServiceInstance;
+}
+
+// Backward compatibility helper
+function getRankingService() {
+  return getProgressionService();
 }
 
 /**
  * Server Exposed APIs for Client
  */
 function apiCalculateRankings(tsId) {
-  return getRankingService().calculateRankings(tsId);
+  return getProgressionService().calculateRankings(tsId);
 }
 
 function apiGetRankingsByTournamentSport(tsId) {
-  return getRankingService().getRankingsByTournamentSport(tsId);
+  return getProgressionService().getRankingsByTournamentSport(tsId);
 }

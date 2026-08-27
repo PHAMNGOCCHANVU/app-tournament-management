@@ -55,7 +55,7 @@
           <div class="card" style="margin-bottom:1.5rem;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
               <h3 style="color:var(--accent);">3. Danh sách Thành viên</h3>
-              <button type="button" class="btn btn-sm btn-secondary" onclick="addPlayerInputRow()">➕ Thêm Thành viên</button>
+              <button type="button" class="btn btn-sm btn-secondary" onclick="handleAddMemberClick()">➕ Thêm Thành viên</button>
             </div>
 
             <div id="players-input-list">
@@ -80,6 +80,7 @@
   };
 
   let openTournamentsList = [];
+  let currentTournamentSports = [];
 
   function loadOpenTournamentsForRegistration(presetId) {
     App.server.call('apiGetTournamentList', { status: 'open' })
@@ -108,21 +109,78 @@
     App.server.call('apiGetTournamentById', tId)
       .then(t => {
         if (!t || !t.sports) return;
+        currentTournamentSports = t.sports;
         const openSports = t.sports.filter(s => s.status === 'open');
         tsSelect.innerHTML = `<option value="">-- Chọn Môn Thi Đấu --</option>` +
-          openSports.map(s => `<option value="${s.ts_id}">${s.sport_name} (Hạn: ${s.registration_deadline || 'Không có'})</option>`).join('');
+          openSports.map(s => {
+            const catLabel = s.category ? ` - ${CATEGORY_LABELS[s.category] || s.category}` : '';
+            const lvlLabel = s.skill_level ? ` - Hạng ${s.skill_level}` : '';
+            return `<option value="${s.ts_id}">${s.sport_name}${catLabel}${lvlLabel} (Hạn: ${s.registration_deadline || 'Không có'})</option>`;
+          }).join('');
       });
   }
 
   function onRegisterTsChange() {
+    const tsId = document.getElementById('reg-ts-select').value;
     const playersList = document.getElementById('players-input-list');
     playersList.innerHTML = '';
 
-    // Add Captain row by default
-    addPlayerInputRow('Đội trưởng', true);
+    const addMemberBtn = document.querySelector('button[onclick="handleAddMemberClick()"]') || document.querySelector('button[onclick="addPlayerInputRow()"]');
+
+    if (!tsId) {
+      if (addMemberBtn) addMemberBtn.style.display = 'inline-block';
+      addPlayerInputRow('Đội trưởng', true, true);
+      return;
+    }
+
+    const selectedTs = currentTournamentSports.find(s => s.ts_id === tsId);
+    if (!selectedTs) return;
+
+    // Show/hide rules info
+    const rulesInfo = document.getElementById('sport-rules-info');
+    if (rulesInfo) {
+      rulesInfo.style.display = 'block';
+      let infoText = `<strong>Môn:</strong> ${selectedTs.sport_name}`;
+      if (selectedTs.category) infoText += ` | <strong>Hạng mục:</strong> ${CATEGORY_LABELS[selectedTs.category] || selectedTs.category}`;
+      if (selectedTs.skill_level) infoText += ` | <strong>Trình độ:</strong> Hạng ${selectedTs.skill_level}`;
+      infoText += ` | <strong>Số VĐV:</strong> ${selectedTs.min_players_per_team}-${selectedTs.max_players_per_team} người`;
+      rulesInfo.innerHTML = infoText;
+    }
+
+    const sportType = selectedTs.sport_type;
+    const minPlayers = Number(selectedTs.min_players_per_team) || 1;
+
+    // Populate rows and handle add button visibility
+    if (sportType === 'individual' || selectedTs.max_players_per_team == 1) {
+      if (addMemberBtn) addMemberBtn.style.display = 'none';
+      addPlayerInputRow('VĐV', true, false); // Captain/Individual VĐV, no position
+    } else if (sportType === 'doubles' || selectedTs.max_players_per_team == 2) {
+      if (addMemberBtn) addMemberBtn.style.display = 'none';
+      addPlayerInputRow('Đội trưởng (VĐV 1)', true, false); // no position
+      addPlayerInputRow('VĐV 2', false, false); // no position
+    } else {
+      // team sport
+      if (addMemberBtn) addMemberBtn.style.display = 'inline-block';
+      addPlayerInputRow('Đội trưởng', true, true); // has position
+      for (let i = 1; i < minPlayers; i++) {
+        addPlayerInputRow(`Thành viên ${i + 1}`, false, true); // has position
+      }
+    }
   }
 
-  function addPlayerInputRow(defaultRole = 'Thành viên', isCaptain = false) {
+  function handleAddMemberClick() {
+    const tsId = document.getElementById('reg-ts-select').value;
+    let showPosition = true;
+    if (tsId) {
+      const selectedTs = currentTournamentSports.find(s => s.ts_id === tsId);
+      if (selectedTs && selectedTs.sport_type !== 'team') {
+        showPosition = false;
+      }
+    }
+    addPlayerInputRow('Thành viên', false, showPosition);
+  }
+
+  function addPlayerInputRow(defaultRole = 'Thành viên', isCaptain = false, showPosition = true) {
     const list = document.getElementById('players-input-list');
     if (!list) return;
 
@@ -142,11 +200,31 @@
         <input type="email" class="form-control p-email" placeholder="Email Google" ${isCaptain ? 'required' : ''}>
       </div>
       <div>
-        <input type="text" class="form-control p-phone" placeholder="Số điện thoại">
+        <select class="form-control p-gender">
+          <option value="male">Nam</option>
+          <option value="female">Nữ</option>
+        </select>
       </div>
-      <div style="display:flex; gap:0.5rem;">
-        <input type="number" class="form-control p-jersey" placeholder="Số áo" style="width:70px;">
-        ${!isCaptain ? `<button type="button" class="btn btn-sm btn-danger" onclick="document.getElementById('${rowId}').remove()">✕</button>` : '<span class="badge badge-open">Captain</span>'}
+      <div style="${showPosition ? '' : 'visibility:hidden; pointer-events:none;'}">
+        <select class="form-control p-position">
+          <option value="">-- Vị trí --</option>
+          <option value="goalkeeper">Thủ môn</option>
+          <option value="defender">Hậu vệ</option>
+          <option value="midfielder">Tiền vệ</option>
+          <option value="forward">Tiền đạo</option>
+          <option value="setter">Chuyền hai</option>
+          <option value="middle_blocker">Đập giữa</option>
+          <option value="outside_hitter">Đập biên</option>
+          <option value="opposite_hitter">Đối chuyền</option>
+          <option value="libero">Libero</option>
+        </select>
+      </div>
+      <div style="grid-column: span 2; display:flex; gap:0.5rem;">
+        <input type="text" class="form-control p-phone" placeholder="Số điện thoại" style="flex:1;">
+        <input type="number" class="form-control p-jersey" placeholder="Số áo" style="width:80px;">
+      </div>
+      <div style="grid-column: span 2; display:flex; align-items:center; justify-content:flex-end;">
+        ${!isCaptain ? `<button type="button" class="btn btn-sm btn-danger" onclick="document.getElementById('${rowId}').remove()">✕ Xóa</button>` : '<span class="badge badge-open">Captain</span>'}
       </div>
     `;
 
@@ -166,6 +244,8 @@
       const email = row.querySelector('.p-email').value;
       const phone = row.querySelector('.p-phone').value;
       const jersey = row.querySelector('.p-jersey').value;
+      const gender = row.querySelector('.p-gender') ? row.querySelector('.p-gender').value : '';
+      const position = row.querySelector('.p-position') ? row.querySelector('.p-position').value : '';
 
       if (name) {
         playersData.push({
@@ -173,6 +253,8 @@
           email: email,
           phone: phone,
           jersey_number: jersey,
+          gender: gender,
+          position: position,
           role_in_team: idx === 0 ? 'captain' : 'player'
         });
       }
@@ -186,9 +268,45 @@
     };
 
     App.server.call('apiRegisterTeam', payload)
-      .then(res => {
-        App.toast.show('Đăng ký đội thành công! Đơn đăng ký đang chờ Ban tổ chức duyệt.', 'success');
-        App.router.navigateTo('dashboard');
+      .then(team => {
+        const teamId = team ? team.team_id : 'TM';
+        const teamName = payload.name;
+        const vietQrUrl = `https://img.vietqr.io/image/970422-0345678999-compact2.png?amount=0&addInfo=${encodeURIComponent(teamId)}&accountName=BAN%20TO%20CHUC%20GIAI`;
+
+        const modalBody = `
+          <div style="text-align:center;">
+            <div style="font-size:3rem; margin-bottom:0.5rem;">🎉</div>
+            <h3 style="color:var(--secondary); margin-bottom:0.5rem;">Đăng Ký Thành Công!</h3>
+            <p style="color:var(--text-main); font-size:1.05rem; margin-bottom:1rem;">
+              Đội <strong>${teamName}</strong> đã được ghi nhận vào hệ thống.
+            </p>
+
+            <div style="background:rgba(15,23,42,0.6); padding:1rem; border-radius:var(--radius-md); border:1px solid var(--border); margin-bottom:1rem; text-align:left;">
+              <p style="font-size:0.9rem; margin-bottom:0.35rem;">
+                Mã Đội (Team ID): <strong style="color:var(--primary); font-size:1.1rem;">${teamId}</strong>
+              </p>
+              <p style="font-size:0.85rem; color:var(--text-muted);">
+                Trạng thái: <span class="badge badge-open">Chờ duyệt / Thanh toán</span>
+              </p>
+            </div>
+
+            <div class="qr-container">
+              <p style="font-weight:700; color:#0f172a; margin-bottom:0.5rem; font-size:0.95rem;">Quét Mã QR Chuyển Khoản Lệ Phí (VietQR)</p>
+              <img src="${vietQrUrl}" alt="VietQR Payment">
+              <p style="font-size:0.8rem; color:#64748b; margin-top:0.5rem;">
+                Nội dung CK: <strong style="color:#0f172a;">${teamId}</strong> (Hệ thống tự động duyệt qua Webhook)
+              </p>
+            </div>
+
+            <p style="font-size:0.85rem; color:var(--text-muted); margin-top:1rem;">
+              Ban tổ chức sẽ gửi email xác nhận đến hòm thư của bạn. Bạn cũng có thể theo dõi trạng thái tại Trang Cá Nhân.
+            </p>
+          </div>
+        `;
+
+        App.modal.open('Xác Nhận Đăng Ký & Thanh Toán', modalBody, () => {
+          App.router.navigateTo('dashboard');
+        }, 'Về Trang Chủ');
       })
       .catch(err => {
         App.toast.show('Lỗi khi đăng ký: ' + err.message, 'error');

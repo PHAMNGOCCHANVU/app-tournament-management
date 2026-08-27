@@ -1,9 +1,9 @@
 /**
- * MatchService.gs - Match Scheduling, Fixture Generation (Factory Pattern), Score Management & Bracket Advancement
+ * Mod_BracketEngine.js - Module 3: Algorithmic Fixture & Bracket Tree Generation
  */
 
 /**
- * Interface / Base Class for Fixture Generators
+ * Base Interface for Fixture Generators
  */
 class BaseFixtureGenerator {
   generate(tsId, teams) {
@@ -45,13 +45,13 @@ class RoundRobinGenerator extends BaseFixtureGenerator {
           const matchId = generateId('M');
 
           let winner = '';
-          let status = 'scheduled';
+          let status = MATCH_STATUS.SCHEDULED;
           let team1Score = '';
           let team2Score = '';
           let notes = '';
 
           if (isByeMatch) {
-            status = 'completed';
+            status = MATCH_STATUS.COMPLETED;
             winner = team1 === 'BYE' ? team2 : team1;
             team1Score = team1 === 'BYE' ? 0 : 3;
             team2Score = team2 === 'BYE' ? 0 : 3;
@@ -124,7 +124,9 @@ class SingleEliminationGenerator extends BaseFixtureGenerator {
       currentRoundNum++;
     }
 
-    const seeds = teams.map(t => t.team_id);
+    // Sort seeded teams first if seed > 0
+    const sortedTeams = [...teams].sort((a, b) => (Number(a.seed) || 999) - (Number(b.seed) || 999));
+    const seeds = sortedTeams.map(t => t.team_id);
     for (let i = 0; i < numByes; i++) {
       seeds.push('BYE');
     }
@@ -134,12 +136,12 @@ class SingleEliminationGenerator extends BaseFixtureGenerator {
       const team2 = seeds[i * 2 + 1] || 'TBD';
       const isByeMatch = (team1 === 'BYE' || team2 === 'BYE');
       
-      let status = 'scheduled';
+      let status = MATCH_STATUS.SCHEDULED;
       let winner = '';
       let notes = '';
 
       if (isByeMatch) {
-        status = 'completed';
+        status = MATCH_STATUS.COMPLETED;
         winner = team1 === 'BYE' ? team2 : team1;
         notes = 'Được miễn đấu vòng 1 (BYE)';
       }
@@ -180,7 +182,7 @@ class SingleEliminationGenerator extends BaseFixtureGenerator {
           winner_team_id: '',
           match_date: '',
           location: 'Sân chính',
-          status: 'scheduled',
+          status: MATCH_STATUS.SCHEDULED,
           notes: '',
           updated_by: 'System',
           updated_at: new Date().toISOString()
@@ -209,24 +211,21 @@ class FixtureGeneratorFactory {
 }
 
 /**
- * MatchService Class
+ * High-level Bracket & Fixture Engine Service
  */
-class MatchService {
+class BracketEngineService {
   get matchRepo() { return new BaseRepository('Match', 'match_id'); }
   get tsRepo() { return new BaseRepository('TournamentSport', 'ts_id'); }
   get teamRepo() { return new BaseRepository('Team', 'team_id'); }
   get tournamentRepo() { return new BaseRepository('Tournament', 'tournament_id'); }
 
-  /**
-   * Generate Fixtures for a TournamentSport
-   */
   generateFixtures(tsId) {
     const ts = this.tsRepo.getById(tsId);
     if (!ts) throw new Error('Không tìm thấy thông tin môn thi đấu.');
 
     getAuthService().checkPermission(ts.tournament_id, ['organizer']);
 
-    const approvedTeams = this.teamRepo.where('ts_id', tsId).filter(t => t.status === 'approved');
+    const approvedTeams = this.teamRepo.where('ts_id', tsId).filter(t => t.status === TEAM_STATUS.APPROVED);
     if (approvedTeams.length < Number(ts.min_teams)) {
       throw new Error(`Chưa đủ số lượng đội tối thiểu để sinh lịch thi đấu (${approvedTeams.length}/${ts.min_teams} đội).`);
     }
@@ -236,163 +235,36 @@ class MatchService {
     const generator = FixtureGeneratorFactory.getGenerator(ts.format);
     const matches = generator.generate(tsId, approvedTeams);
 
-    matches.forEach(m => this.matchRepo.insert(m));
+    // Batch insert for performance
+    this.matchRepo.batchInsert(matches);
 
-    this.tsRepo.update(tsId, { status: 'in_progress' });
-    this.tournamentRepo.update(ts.tournament_id, { status: 'in_progress' });
+    this.tsRepo.update(tsId, { status: TOURNAMENT_STATUS.IN_PROGRESS });
+    this.tournamentRepo.update(ts.tournament_id, { status: TOURNAMENT_STATUS.IN_PROGRESS });
 
     getRankingService().calculateRankings(tsId);
 
     if (ts.format === 'single_elimination') {
-      const completedByes = matches.filter(m => m.round === 1 && m.status === 'completed' && m.winner_team_id);
-      completedByes.forEach(m => this.advanceBracket(m.match_id));
+      const completedByes = matches.filter(m => m.round === 1 && m.status === MATCH_STATUS.COMPLETED && m.winner_team_id);
+      completedByes.forEach(m => getProgressionService().advanceBracket(m.match_id));
     }
 
     try {
       getEmailService().sendMatchScheduleNotification(tsId);
     } catch (e) {
-      Logger.log('Không thể gửi email lịch thi đấu: ' + e.message);
+      if (typeof Logger !== 'undefined' && Logger.log) {
+        Logger.log('Không thể gửi email lịch thi đấu: ' + e.message);
+      }
     }
 
     return matches;
   }
-
-  /**
-   * Update Match Result (Score & Winner)
-   */
-  updateMatchResult(matchId, team1Score, team2Score, notes) {
-    const match = this.matchRepo.getById(matchId);
-    if (!match) throw new Error('Không tìm thấy trận đấu.');
-
-    const ts = this.tsRepo.getById(match.ts_id);
-    const tournament = this.tournamentRepo.getById(ts.tournament_id);
-
-    if (tournament && (tournament.status === 'completed' || tournament.status === 'cancelled')) {
-      throw new Error(`Giải đấu đã ở trạng thái [${tournament.status === 'completed' ? 'Đã kết thúc' : 'Đã hủy'}]. Dữ liệu đã khóa (read-only), không thể chỉnh sửa tỷ số.`);
-    }
-
-    if (ts && (ts.status === 'completed' || ts.status === 'cancelled')) {
-      throw new Error(`Môn thi đấu này đã ở trạng thái [${ts.status === 'completed' ? 'Đã kết thúc' : 'Đã hủy'}]. Không thể chỉnh sửa tỷ số.`);
-    }
-
-    const auth = getAuthService();
-    auth.checkPermission(ts.tournament_id, ['organizer', 'referee']);
-
-    const s1 = Number(team1Score);
-    const s2 = Number(team2Score);
-
-    if (isNaN(s1) || isNaN(s2)) {
-      throw new Error('Vui lòng nhập tỷ số hợp lệ.');
-    }
-
-    let winner = '';
-    if (s1 > s2) winner = match.team1_id;
-    else if (s2 > s1) winner = match.team2_id;
-    else winner = 'DRAW';
-
-    if (ts.format === 'single_elimination' && winner === 'DRAW') {
-      throw new Error('Thể thức Loại trực tiếp không chấp nhận kết quả Hòa. Vui lòng nhập tỉ số phụ/luân lưu để xác định đội thắng.');
-    }
-
-    const updatedUser = auth.getCurrentUserEmail();
-
-    const updatedMatch = this.matchRepo.update(matchId, {
-      team1_score: s1,
-      team2_score: s2,
-      winner_team_id: winner,
-      status: 'completed',
-      notes: notes !== undefined ? notes : match.notes,
-      updated_by: updatedUser,
-      updated_at: new Date().toISOString()
-    });
-
-    getRankingService().calculateRankings(match.ts_id);
-
-    if (ts.format === 'single_elimination' && winner !== 'DRAW') {
-      this.advanceBracket(matchId);
-    }
-
-    return updatedMatch;
-  }
-
-  /**
-   * Advance Winner in Single Elimination Bracket Tree
-   */
-  advanceBracket(completedMatchId) {
-    const match = this.matchRepo.getById(completedMatchId);
-    if (!match || !match.winner_team_id) return;
-
-    const allMatches = this.matchRepo.where('ts_id', match.ts_id);
-    const currentRoundMatches = allMatches.filter(m => Number(m.round) === Number(match.round))
-                                         .sort((a, b) => a.match_id.localeCompare(b.match_id));
-    
-    const currentMatchIndex = currentRoundMatches.findIndex(m => m.match_id === completedMatchId);
-    if (currentMatchIndex === -1) return;
-
-    const nextRoundNumber = Number(match.round) + 1;
-    const nextRoundMatches = allMatches.filter(m => Number(m.round) === nextRoundNumber)
-                                       .sort((a, b) => a.match_id.localeCompare(b.match_id));
-
-    if (nextRoundMatches.length === 0) return;
-
-    const targetMatchIndex = Math.floor(currentMatchIndex / 2);
-    const targetMatch = nextRoundMatches[targetMatchIndex];
-    if (!targetMatch) return;
-
-    const isFirstSlot = (currentMatchIndex % 2 === 0);
-    const updateData = {};
-
-    if (isFirstSlot) {
-      updateData.team1_id = match.winner_team_id;
-    } else {
-      updateData.team2_id = match.winner_team_id;
-    }
-
-    this.matchRepo.update(targetMatch.match_id, updateData);
-  }
-
-  /**
-   * Get Matches for a TournamentSport joined with team names
-   */
-  getMatchesByTournamentSport(tsId) {
-    const matches = this.matchRepo.where('ts_id', tsId);
-    const teams = this.teamRepo.where('ts_id', tsId);
-
-    const getTeamName = (id) => {
-      if (id === 'BYE') return 'Nghỉ (BYE)';
-      if (id === 'TBD') return 'Chưa xác định';
-      const team = teams.find(t => t.team_id === id);
-      return team ? team.name : id;
-    };
-
-    return matches.map(m => Object.assign({}, m, {
-      team1_name: getTeamName(m.team1_id),
-      team2_name: getTeamName(m.team2_id),
-      winner_team_name: getTeamName(m.winner_team_id)
-    })).sort((a, b) => Number(a.round) - Number(b.round));
-  }
 }
 
-// Singleton Helper (global variable for V8 reliability)
-let _matchServiceInstance = null;
-function getMatchService() {
-  if (!_matchServiceInstance) {
-    _matchServiceInstance = new MatchService();
+// Singleton Instance Helper
+let _bracketEngineServiceInstance = null;
+function getBracketEngineService() {
+  if (!_bracketEngineServiceInstance) {
+    _bracketEngineServiceInstance = new BracketEngineService();
   }
-  return _matchServiceInstance;
-}
-
-/**
- * Server Exposed APIs for Client
- */
-function apiGenerateFixtures(tsId) {
-  return getMatchService().generateFixtures(tsId);
-}
-
-function apiUpdateMatchResult(matchId, team1Score, team2Score, notes) {
-  return getMatchService().updateMatchResult(matchId, team1Score, team2Score, notes);
-}
-
-function apiGetMatchesByTournamentSport(tsId) {
-  return getMatchService().getMatchesByTournamentSport(tsId);
+  return _bracketEngineServiceInstance;
 }

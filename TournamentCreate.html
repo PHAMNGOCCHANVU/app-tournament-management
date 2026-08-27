@@ -85,55 +85,105 @@
       });
   }
 
+  function safeJsonArray(val) {
+    if (Array.isArray(val)) return val;
+    if (typeof val === 'string' && val.trim() !== '') {
+      try {
+        const parsed = JSON.parse(val);
+        if (Array.isArray(parsed)) return parsed;
+        if (typeof parsed === 'string') return parsed.split(',').map(s => s.trim()).filter(Boolean);
+      } catch (e) {
+        return val.split(',').map(s => s.trim()).filter(Boolean);
+      }
+    }
+    return [];
+  }
+
   function renderSportsSelector(sports) {
     const container = document.getElementById('sports-selector-container');
     if (!container) return;
 
-    container.innerHTML = sports.map((s, idx) => `
-      <div class="card" style="background: rgba(15,23,42,0.4); margin-bottom: 1rem; border-color: var(--border);">
-        <div style="display:flex; align-items:center; gap:0.75rem; margin-bottom:0.75rem;">
-          <input type="checkbox" class="sport-enable-checkbox" id="sport-check-${s.sport_id}" data-sport-id="${s.sport_id}" style="width:18px; height:18px; cursor:pointer;" onchange="toggleSportConfig('${s.sport_id}')">
-          <label for="sport-check-${s.sport_id}" style="font-weight:700; font-size:1.1rem; cursor:pointer; color:#fff;">${s.name}</label>
-          <span class="badge badge-draft" style="font-size:0.7rem;">${s.type}</span>
-        </div>
+    container.innerHTML = sports.map((s, idx) => {
+      const categories = safeJsonArray(s.categories);
+      const defaultLevels = safeJsonArray(s.default_levels);
 
-        <div id="sport-config-panel-${s.sport_id}" style="display:none; padding-top:0.75rem; border-top:1px solid var(--border);">
-          <div class="grid-2">
-            <div class="form-group">
-              <label class="form-label">Thể thức thi đấu</label>
-              <select class="form-control" id="fmt-${s.sport_id}">
-                <option value="round_robin">Vòng tròn (Round Robin)</option>
-                <option value="single_elimination">Loại trực tiếp (Single Elimination)</option>
-              </select>
-            </div>
-
-            <div class="form-group">
-              <label class="form-label">Hạn chót đăng ký</label>
-              <input type="date" class="form-control" id="deadline-${s.sport_id}">
-            </div>
-          </div>
-
-          <div class="grid-4">
-            <div class="form-group">
-              <label class="form-label">Số đội tối đa</label>
-              <input type="number" class="form-control" id="max-${s.sport_id}" value="8" min="2">
-            </div>
-            <div class="form-group">
-              <label class="form-label">Số đội tối thiểu</label>
-              <input type="number" class="form-control" id="min-${s.sport_id}" value="2" min="2">
-            </div>
-            <div class="form-group">
-              <label class="form-label">Điểm Thắng</label>
-              <input type="number" class="form-control" id="win-pts-${s.sport_id}" value="3">
-            </div>
-            <div class="form-group">
-              <label class="form-label">Điểm Hòa</label>
-              <input type="number" class="form-control" id="draw-pts-${s.sport_id}" value="1">
-            </div>
+      const categoryCheckboxesHtml = categories.length > 0 ? `
+        <div class="form-group" style="margin-top:0.75rem;">
+          <label class="form-label">Chọn Hạng mục (Categories):</label>
+          <div style="display:flex; flex-wrap:wrap; gap:0.75rem;">
+            ${categories.map(cat => `
+              <label style="display:inline-flex; align-items:center; gap:0.35rem; font-size:0.85rem; cursor:pointer;">
+                <input type="checkbox" class="cat-checkbox-${s.sport_id}" value="${cat}" checked>
+                ${(typeof CATEGORY_LABELS !== 'undefined' && CATEGORY_LABELS[cat]) || cat}
+              </label>
+            `).join('')}
           </div>
         </div>
-      </div>
-    `).join('');
+      ` : '';
+
+      const levelCheckboxesHtml = (s.has_skill_level || defaultLevels.length > 0) ? `
+        <div class="form-group" style="margin-top:0.75rem;">
+          <label class="form-label">Chọn Trình độ (Skill Levels):</label>
+          <div style="display:flex; flex-wrap:wrap; gap:0.75rem;">
+            ${defaultLevels.map(lvl => `
+              <label style="display:inline-flex; align-items:center; gap:0.35rem; font-size:0.85rem; cursor:pointer;">
+                <input type="checkbox" class="lvl-checkbox-${s.sport_id}" value="${lvl}" checked>
+                Hạng ${lvl}
+              </label>
+            `).join('')}
+          </div>
+        </div>
+      ` : '';
+
+      return `
+        <div class="card" style="background: rgba(15,23,42,0.4); margin-bottom: 1rem; border-color: var(--border);">
+          <div style="display:flex; align-items:center; gap:0.75rem; margin-bottom:0.75rem;">
+            <input type="checkbox" class="sport-enable-checkbox" id="sport-check-${s.sport_id}" data-sport-id="${s.sport_id}" style="width:18px; height:18px; cursor:pointer;" onchange="toggleSportConfig('${s.sport_id}')">
+            <label for="sport-check-${s.sport_id}" style="font-weight:700; font-size:1.1rem; cursor:pointer; color:#fff;">${s.name}</label>
+            <span class="badge badge-draft" style="font-size:0.7rem;">${s.type}</span>
+          </div>
+
+          <div id="sport-config-panel-${s.sport_id}" style="display:none; padding-top:0.75rem; border-top:1px solid var(--border);">
+            ${categoryCheckboxesHtml}
+            ${levelCheckboxesHtml}
+
+            <div class="grid-2" style="margin-top:0.75rem;">
+              <div class="form-group">
+                <label class="form-label">Thể thức thi đấu</label>
+                <select class="form-control" id="fmt-${s.sport_id}">
+                  <option value="round_robin">Vòng tròn (Round Robin)</option>
+                  <option value="single_elimination">Loại trực tiếp (Single Elimination)</option>
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Hạn chót đăng ký</label>
+                <input type="date" class="form-control" id="deadline-${s.sport_id}">
+              </div>
+            </div>
+
+            <div class="grid-4">
+              <div class="form-group">
+                <label class="form-label">Số đội tối đa</label>
+                <input type="number" class="form-control" id="max-${s.sport_id}" value="8" min="2">
+              </div>
+              <div class="form-group">
+                <label class="form-label">Số đội tối thiểu</label>
+                <input type="number" class="form-control" id="min-${s.sport_id}" value="2" min="2">
+              </div>
+              <div class="form-group">
+                <label class="form-label">Điểm Thắng</label>
+                <input type="number" class="form-control" id="win-pts-${s.sport_id}" value="3">
+              </div>
+              <div class="form-group">
+                <label class="form-label">Điểm Hòa</label>
+                <input type="number" class="form-control" id="draw-pts-${s.sport_id}" value="1">
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+    }).join('');
   }
 
   function toggleSportConfig(sportId) {
@@ -151,19 +201,38 @@
     submitBtn.disabled = true;
     submitBtn.innerText = '⏳ Đang tạo...';
 
-    // Collect checked sports
+    // Collect checked sports & combinations
     const selectedSports = [];
     document.querySelectorAll('.sport-enable-checkbox:checked').forEach(cb => {
       const sportId = cb.dataset.sportId;
-      selectedSports.push({
-        sport_id: sportId,
-        format: document.getElementById(`fmt-${sportId}`).value,
-        registration_deadline: document.getElementById(`deadline-${sportId}`).value,
-        max_teams: document.getElementById(`max-${sportId}`).value,
-        min_teams: document.getElementById(`min-${sportId}`).value,
-        points_for_win: document.getElementById(`win-pts-${sportId}`).value,
-        points_for_draw: document.getElementById(`draw-pts-${sportId}`).value,
-        points_for_loss: 0
+      const fmt = document.getElementById(`fmt-${sportId}`).value;
+      const deadline = document.getElementById(`deadline-${sportId}`).value;
+      const maxTeams = document.getElementById(`max-${sportId}`).value;
+      const minTeams = document.getElementById(`min-${sportId}`).value;
+      const winPts = document.getElementById(`win-pts-${sportId}`).value;
+      const drawPts = document.getElementById(`draw-pts-${sportId}`).value;
+
+      const checkedCategories = Array.from(document.querySelectorAll(`.cat-checkbox-${sportId}:checked`)).map(c => c.value);
+      const checkedLevels = Array.from(document.querySelectorAll(`.lvl-checkbox-${sportId}:checked`)).map(l => l.value);
+
+      const cats = checkedCategories.length > 0 ? checkedCategories : [''];
+      const lvls = checkedLevels.length > 0 ? checkedLevels : [''];
+
+      cats.forEach(cat => {
+        lvls.forEach(lvl => {
+          selectedSports.push({
+            sport_id: sportId,
+            format: fmt,
+            registration_deadline: deadline,
+            max_teams: maxTeams,
+            min_teams: minTeams,
+            points_for_win: winPts,
+            points_for_draw: drawPts,
+            points_for_loss: 0,
+            category: cat,
+            skill_level: lvl
+          });
+        });
       });
     });
 
