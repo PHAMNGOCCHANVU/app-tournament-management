@@ -24,7 +24,6 @@
   let currentActiveTsId = '';
 
   function loadTournamentManageData(tournamentId) {
-    // SINGLE 1-ROUND-TRIP HIGH-PERFORMANCE BUNDLE CALL!
     App.server.call('apiGetTournamentManageBundle', tournamentId)
       .then(bundle => {
         if (!bundle || !bundle.tournament) throw new Error('Không tìm thấy thông tin giải đấu.');
@@ -174,6 +173,7 @@
       });
   }
 
+  // [MODIFY]: Thêm tính năng hiển thị trực quan danh sách VĐV
   function renderTsTeamsAndFixturesPanel(tsId, teams) {
     const panel = document.getElementById('ts-manage-detail-panel');
     if (!panel || !currentManageTournament) return;
@@ -203,7 +203,7 @@
         <table class="table">
           <thead>
             <tr>
-              <th>Tên Đội</th>
+              <th>Tên Đội & Đội Hình</th>
               <th>Đội Trưởng Email</th>
               <th>Số VĐV</th>
               <th>Ngày Đăng Ký</th>
@@ -215,15 +215,35 @@
             ${teams.length === 0 ? `<tr><td colspan="6" style="text-align:center;">Chưa có đội nào đăng ký.</td></tr>` : ''}
             ${teams.map(tm => `
               <tr>
-                <td><strong>${tm.name}</strong></td>
-                <td>${tm.captain_email}</td>
-                <td>${tm.players ? tm.players.length : 0} người</td>
-                <td>${formatDate(tm.registration_date)}</td>
-                <td><span class="badge badge-${tm.status}">${tm.status}</span></td>
                 <td>
+                  <strong style="font-size: 1.1rem; color: var(--primary);">${tm.name}</strong>
+                  ${tm.players && tm.players.length > 0 ? `
+                    <div style="margin-top: 0.5rem; padding: 0.75rem; background: rgba(255,255,255,0.05); border-left: 3px solid var(--secondary); border-radius: 4px; font-size: 0.85rem;">
+                      <strong style="color:var(--text-muted); display:block; margin-bottom:0.25rem;">Danh sách VĐV:</strong>
+                      <ul style="margin: 0; padding-left: 1rem;">
+                        ${tm.players.map(p => `
+                          <li style="margin-bottom: 0.25rem;">
+                            <b>${p.name}</b> 
+                            ${p.jersey_number ? ` | Số áo: ${p.jersey_number}` : ''}
+                            ${p.position ? ` | Vị trí: ${p.position}` : ''}
+                            ${p.gender ? ` | Giới tính: ${p.gender === 'male' ? 'Nam' : (p.gender === 'female' ? 'Nữ' : p.gender)}` : ''}
+                            <span class="badge ${p.role_in_team === 'captain' ? 'badge-primary' : 'badge-secondary'}" style="font-size: 0.65rem; margin-left: 6px; padding: 2px 6px;">
+                              ${p.role_in_team === 'captain' ? 'Đội trưởng 👑' : 'VĐV'}
+                            </span>
+                          </li>
+                        `).join('')}
+                      </ul>
+                    </div>
+                  ` : ''}
+                </td>
+                <td style="vertical-align: top;">${tm.captain_email}</td>
+                <td style="vertical-align: top;">${tm.players ? tm.players.length : 0} người</td>
+                <td style="vertical-align: top;">${formatDate(tm.registration_date)}</td>
+                <td style="vertical-align: top;"><span class="badge badge-${tm.status}">${tm.status}</span></td>
+                <td style="vertical-align: top;">
                   ${tm.status === 'pending' ? `
-                    <button class="btn btn-sm btn-success" onclick="approveTeamReg('${tm.team_id}')">Duyệt</button>
-                    <button class="btn btn-sm btn-danger" onclick="rejectTeamReg('${tm.team_id}')">Từ chối</button>
+                    <button class="btn btn-sm btn-success" style="margin-bottom:0.5rem; width:100%;" onclick="approveTeamReg('${tm.team_id}')">Duyệt</button>
+                    <button class="btn btn-sm btn-danger" style="width:100%;" onclick="rejectTeamReg('${tm.team_id}')">Từ chối</button>
                   ` : ''}
                   ${tm.status === 'approved' ? `
                     <button class="btn btn-sm btn-secondary" onclick="withdrawTeamReg('${tm.team_id}')">Hủy duyệt</button>

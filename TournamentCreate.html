@@ -32,7 +32,8 @@
             <div class="grid-2">
               <div class="form-group">
                 <label class="form-label">Ngày bắt đầu *</label>
-                <input type="date" class="form-control" id="t-start-date" required>
+                <!-- [MODIFY]: Thêm onchange để tự động khóa Hạn chót đăng ký -->
+                <input type="date" class="form-control" id="t-start-date" required onchange="window.syncDeadlineMax(this.value)">
               </div>
 
               <div class="form-group">
@@ -74,6 +75,20 @@
 
   let systemSportsList = [];
 
+  // Hàm tiện ích để đồng bộ max date cho tất cả các ô deadline
+  window.syncDeadlineMax = function(dateValue) {
+    document.querySelectorAll('input[id^="deadline-"]').forEach(input => {
+      input.max = dateValue;
+    });
+  };
+
+  const UI_CATEGORY_LABELS = {
+    'mens_singles': 'Đơn Nam', 'womens_singles': 'Đơn Nữ',
+    'mens_doubles': 'Đôi Nam', 'womens_doubles': 'Đôi Nữ',
+    'mixed_doubles': 'Đôi Nam Nữ', 'open': 'Mở rộng',
+    'mens': 'Nam', 'womens': 'Nữ', 'mixed': 'Nam Nữ'
+  };
+
   function loadSportsForCreation() {
     App.server.call('apiGetAllSports')
       .then(sports => {
@@ -106,6 +121,15 @@
     container.innerHTML = sports.map((s, idx) => {
       const categories = safeJsonArray(s.categories);
       const defaultLevels = safeJsonArray(s.default_levels);
+      
+      // [MODIFY]: Xác định xem môn này có tính điểm Set hay không
+      const isSetBased = ['sets', 'points'].includes(s.scoring_type);
+      const showDraw = s.scoring_type === 'goals';
+
+      let defaultTarget = 0;
+      if (s.sport_id === 'S004' || s.sport_id === 'S005') defaultTarget = 11;
+      else if (s.sport_id === 'S003') defaultTarget = 21;
+      else if (s.sport_id === 'S002') defaultTarget = 25;
 
       const categoryCheckboxesHtml = categories.length > 0 ? `
         <div class="form-group" style="margin-top:0.75rem;">
@@ -114,7 +138,7 @@
             ${categories.map(cat => `
               <label style="display:inline-flex; align-items:center; gap:0.35rem; font-size:0.85rem; cursor:pointer;">
                 <input type="checkbox" class="cat-checkbox-${s.sport_id}" value="${cat}" checked>
-                ${(typeof CATEGORY_LABELS !== 'undefined' && CATEGORY_LABELS[cat]) || cat}
+                ${UI_CATEGORY_LABELS[cat] || cat}
               </label>
             `).join('')}
           </div>
@@ -134,6 +158,26 @@
           </div>
         </div>
       ` : '';
+
+      // [MODIFY]: HTML hiển thị linh hoạt Điểm Hòa hoặc Điểm chạm Set
+      const drawInputHtml = showDraw ? `
+        <div class="form-group">
+          <label class="form-label">Điểm Hòa</label>
+          <input type="number" class="form-control" id="draw-pts-${s.sport_id}" value="1">
+        </div>
+      ` : `<input type="hidden" id="draw-pts-${s.sport_id}" value="0">`;
+
+      const ptsTargetHtml = isSetBased ? `
+        <div class="form-group">
+          <label class="form-label">Điểm chạm mỗi Set</label>
+          <select class="form-control" id="pts-target-${s.sport_id}">
+            <option value="11" ${defaultTarget === 11 ? 'selected' : ''}>11 điểm</option>
+            <option value="15" ${defaultTarget === 15 ? 'selected' : ''}>15 điểm</option>
+            <option value="21" ${defaultTarget === 21 ? 'selected' : ''}>21 điểm</option>
+            <option value="25" ${defaultTarget === 25 ? 'selected' : ''}>25 điểm</option>
+          </select>
+        </div>
+      ` : `<input type="hidden" id="pts-target-${s.sport_id}" value="0">`;
 
       return `
         <div class="card" style="background: rgba(15,23,42,0.4); margin-bottom: 1rem; border-color: var(--border);">
@@ -158,11 +202,12 @@
 
               <div class="form-group">
                 <label class="form-label">Hạn chót đăng ký</label>
+                <!-- Ngày max sẽ tự động được gán khi ngày bắt đầu giải thay đổi -->
                 <input type="date" class="form-control" id="deadline-${s.sport_id}">
               </div>
             </div>
 
-            <div class="grid-4">
+            <div class="grid-4" style="margin-top:0.75rem;">
               <div class="form-group">
                 <label class="form-label">Số đội tối đa</label>
                 <input type="number" class="form-control" id="max-${s.sport_id}" value="8" min="2">
@@ -175,10 +220,8 @@
                 <label class="form-label">Điểm Thắng</label>
                 <input type="number" class="form-control" id="win-pts-${s.sport_id}" value="3">
               </div>
-              <div class="form-group">
-                <label class="form-label">Điểm Hòa</label>
-                <input type="number" class="form-control" id="draw-pts-${s.sport_id}" value="1">
-              </div>
+              ${drawInputHtml}
+              ${ptsTargetHtml}
             </div>
           </div>
         </div>
@@ -201,7 +244,6 @@
     submitBtn.disabled = true;
     submitBtn.innerText = '⏳ Đang tạo...';
 
-    // Collect checked sports & combinations
     const selectedSports = [];
     document.querySelectorAll('.sport-enable-checkbox:checked').forEach(cb => {
       const sportId = cb.dataset.sportId;
@@ -211,6 +253,9 @@
       const minTeams = document.getElementById(`min-${sportId}`).value;
       const winPts = document.getElementById(`win-pts-${sportId}`).value;
       const drawPts = document.getElementById(`draw-pts-${sportId}`).value;
+      
+      // [MODIFY]: Lấy dữ liệu điểm mục tiêu mỗi set
+      const ptsTarget = document.getElementById(`pts-target-${sportId}`).value;
 
       const checkedCategories = Array.from(document.querySelectorAll(`.cat-checkbox-${sportId}:checked`)).map(c => c.value);
       const checkedLevels = Array.from(document.querySelectorAll(`.lvl-checkbox-${sportId}:checked`)).map(l => l.value);
@@ -230,7 +275,8 @@
             points_for_draw: drawPts,
             points_for_loss: 0,
             category: cat,
-            skill_level: lvl
+            skill_level: lvl,
+            points_target_per_set: ptsTarget
           });
         });
       });

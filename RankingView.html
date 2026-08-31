@@ -41,12 +41,12 @@
       </div>
     `;
 
-    // Load everything in 1 bundle call
     loadRankingBundle(selectedTournamentId);
   };
 
   let selectedRankingTournamentId = '';
   let selectedRankingTsId = '';
+  let currentRankingSports = []; // [MODIFY]: Lưu danh sách môn để check môn Set hay môn Bàn thắng
 
   function loadRankingBundle(presetTId) {
     App.server.call('apiGetRankingPageBundle', presetTId || '', '')
@@ -61,13 +61,14 @@
 
         if (bundle.tournament) {
           selectedRankingTournamentId = bundle.tournament.tournament_id;
+          currentRankingSports = bundle.tournament.sports || [];
 
           const tsSelect = document.getElementById('rank-ts-select');
-          if (bundle.tournament.sports && bundle.tournament.sports.length > 0) {
-            tsSelect.innerHTML = bundle.tournament.sports.map(s =>
+          if (currentRankingSports.length > 0) {
+            tsSelect.innerHTML = currentRankingSports.map(s =>
               `<option value="${s.ts_id}">${s.sport_name}</option>`
             ).join('');
-            selectedRankingTsId = bundle.tournament.sports[0].ts_id;
+            selectedRankingTsId = currentRankingSports[0].ts_id;
           }
 
           renderRankingsTable(bundle.rankings || []);
@@ -95,17 +96,16 @@
 
     if (!selectedRankingTournamentId) return;
 
-    // Use bundle API for tournament change (1 call instead of 2)
     App.server.call('apiGetRankingPageBundle', selectedRankingTournamentId, '')
       .then(bundle => {
         if (!bundle || !bundle.tournament) return;
 
-        const tsSelect = document.getElementById('rank-ts-select');
-        if (bundle.tournament.sports && bundle.tournament.sports.length > 0) {
-          tsSelect.innerHTML = bundle.tournament.sports.map(s =>
+        currentRankingSports = bundle.tournament.sports || [];
+        if (currentRankingSports.length > 0) {
+          tsSelect.innerHTML = currentRankingSports.map(s =>
             `<option value="${s.ts_id}">${s.sport_name}</option>`
           ).join('');
-          selectedRankingTsId = bundle.tournament.sports[0].ts_id;
+          selectedRankingTsId = currentRankingSports[0].ts_id;
         }
 
         renderRankingsTable(bundle.rankings || []);
@@ -141,11 +141,11 @@
       return;
     }
 
-    const rankBadges = {
-      1: '🥇 1',
-      2: '🥈 2',
-      3: '🥉 3'
-    };
+    // [MODIFY]: Kiểm tra môn hiện tại đang tính Set hay Bàn thắng
+    const currentTs = currentRankingSports.find(s => s.ts_id === selectedRankingTsId);
+    const isSetBased = currentTs && ['sets', 'points'].includes(currentTs.scoring_type);
+
+    const rankBadges = { 1: '🥇 1', 2: '🥈 2', 3: '🥉 3' };
 
     container.innerHTML = `
       <div class="card">
@@ -155,13 +155,23 @@
               <tr>
                 <th style="width:70px; text-align:center;">#</th>
                 <th>Tên Đội</th>
-                <th style="text-align:center;">ST</th>
-                <th style="text-align:center;">T</th>
-                <th style="text-align:center;">H</th>
-                <th style="text-align:center;">B</th>
-                <th style="text-align:center;">BT</th>
-                <th style="text-align:center;">BB</th>
-                <th style="text-align:center;">HS</th>
+                <th style="text-align:center;" title="Số trận">ST</th>
+                <th style="text-align:center;" title="Thắng">T</th>
+                ${isSetBased ? '' : '<th style="text-align:center;" title="Hòa">H</th>'}
+                <th style="text-align:center;" title="Thua">B</th>
+                
+                ${isSetBased ? `
+                  <th style="text-align:center;" title="Set Thắng">Set+</th>
+                  <th style="text-align:center;" title="Set Thua">Set-</th>
+                  <th style="text-align:center;" title="Hiệu số Set">HS Set</th>
+                  <th style="text-align:center;" title="Điểm Thắng">Đ+</th>
+                  <th style="text-align:center;" title="Điểm Thua">Đ-</th>
+                  <th style="text-align:center;" title="Hiệu số Điểm">HS Điểm</th>
+                ` : `
+                  <th style="text-align:center;" title="Bàn thắng">BT</th>
+                  <th style="text-align:center;" title="Bàn thua">BB</th>
+                  <th style="text-align:center;" title="Hiệu số Bàn thắng">HS</th>
+                `}
                 <th style="text-align:center; font-size:1rem; color:var(--primary);">Điểm</th>
               </tr>
             </thead>
@@ -174,13 +184,27 @@
                   <td><strong>${r.team_name}</strong></td>
                   <td style="text-align:center;">${r.played}</td>
                   <td style="text-align:center; color:var(--secondary);">${r.won}</td>
-                  <td style="text-align:center; color:var(--accent);">${r.drawn}</td>
+                  ${isSetBased ? '' : `<td style="text-align:center; color:var(--accent);">${r.drawn}</td>`}
                   <td style="text-align:center; color:var(--danger);">${r.lost}</td>
-                  <td style="text-align:center;">${r.goals_for}</td>
-                  <td style="text-align:center;">${r.goals_against}</td>
-                  <td style="text-align:center; font-weight:700; color:${r.goal_difference > 0 ? 'var(--secondary)' : (r.goal_difference < 0 ? 'var(--danger)' : 'var(--text-muted)')};">
-                    ${r.goal_difference > 0 ? '+' + r.goal_difference : r.goal_difference}
-                  </td>
+                  
+                  ${isSetBased ? `
+                    <td style="text-align:center;">${r.sets_won || 0}</td>
+                    <td style="text-align:center;">${r.sets_lost || 0}</td>
+                    <td style="text-align:center; font-weight:700; color:${(r.sets_diff || 0) > 0 ? 'var(--secondary)' : ((r.sets_diff || 0) < 0 ? 'var(--danger)' : 'var(--text-muted)')};">
+                      ${(r.sets_diff || 0) > 0 ? '+' + r.sets_diff : (r.sets_diff || 0)}
+                    </td>
+                    <td style="text-align:center;">${r.points_for || 0}</td>
+                    <td style="text-align:center;">${r.points_against || 0}</td>
+                    <td style="text-align:center; font-weight:700; color:${(r.points_diff || 0) > 0 ? 'var(--secondary)' : ((r.points_diff || 0) < 0 ? 'var(--danger)' : 'var(--text-muted)')};">
+                      ${(r.points_diff || 0) > 0 ? '+' + r.points_diff : (r.points_diff || 0)}
+                    </td>
+                  ` : `
+                    <td style="text-align:center;">${r.goals_for}</td>
+                    <td style="text-align:center;">${r.goals_against}</td>
+                    <td style="text-align:center; font-weight:700; color:${r.goal_difference > 0 ? 'var(--secondary)' : (r.goal_difference < 0 ? 'var(--danger)' : 'var(--text-muted)')};">
+                      ${r.goal_difference > 0 ? '+' + r.goal_difference : r.goal_difference}
+                    </td>
+                  `}
                   <td style="text-align:center; font-size:1.15rem; font-weight:800; color:var(--primary);">
                     ${r.points}
                   </td>
@@ -193,11 +217,20 @@
         <div style="margin-top:1.25rem; font-size:0.8rem; color:var(--text-dim); display:flex; gap:1.5rem; flex-wrap:wrap;">
           <span><strong>ST:</strong> Số trận đã đấu</span>
           <span><strong>T:</strong> Thắng</span>
-          <span><strong>H:</strong> Hòa</span>
+          ${isSetBased ? '' : '<span><strong>H:</strong> Hòa</span>'}
           <span><strong>B:</strong> Thua</span>
-          <span><strong>BT:</strong> Bàn thắng</span>
-          <span><strong>BB:</strong> Bàn thua</span>
-          <span><strong>HS:</strong> Hiệu số</span>
+          ${isSetBased ? `
+            <span><strong>Set+:</strong> Set Thắng</span>
+            <span><strong>Set-:</strong> Set Thua</span>
+            <span><strong>HS Set:</strong> Hiệu số Set</span>
+            <span><strong>Đ+:</strong> Điểm Thắng</span>
+            <span><strong>Đ-:</strong> Điểm Thua</span>
+            <span><strong>HS Điểm:</strong> Hiệu số Điểm</span>
+          ` : `
+            <span><strong>BT:</strong> Bàn thắng</span>
+            <span><strong>BB:</strong> Bàn thua</span>
+            <span><strong>HS:</strong> Hiệu số Bàn thắng</span>
+          `}
         </div>
       </div>
     `;

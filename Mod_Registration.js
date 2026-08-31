@@ -9,63 +9,57 @@ class RegistrationService {
   get sportRepo() { return new BaseRepository('Sport', 'sport_id'); }
   get tournamentRepo() { return new BaseRepository('Tournament', 'tournament_id'); }
 
-  /**
-   * Register a new Team or Individual Participant
-   */
   registerTeam(data) {
     const auth = getAuthService();
     let userEmail = auth.getCurrentUserEmail();
     
-    // Fallback: If Session email is masked, use captain_email from form input
     if (!userEmail && data.captain_email) {
       userEmail = String(data.captain_email).toLowerCase().trim();
     }
-
-    if (!userEmail) {
-      throw new Error('Vui lòng nhập Email Đội trưởng / Người đại diện để đăng ký.');
-    }
-
-    if (!data.ts_id || !data.name) {
-      throw new Error('Vui lòng nhập tên đội và chọn môn thi đấu.');
-    }
+    if (!userEmail) throw new Error('Vui lòng nhập Email Đội trưởng / Người đại diện để đăng ký.');
+    if (!data.ts_id || !data.name) throw new Error('Vui lòng nhập tên đội và chọn môn thi đấu.');
 
     const ts = this.tsRepo.getById(data.ts_id);
     if (!ts) throw new Error('Không tìm thấy thông tin môn thi đấu trong giải.');
-    if (ts.status !== 'open') {
-      throw new Error('Môn thi đấu này đã đóng đăng ký.');
+    if (ts.status !== 'open') throw new Error('Môn thi đấu này đã đóng đăng ký.');
+
+    const tournament = this.tournamentRepo.getById(ts.tournament_id);
+    if (ts.registration_deadline) {
+      if (new Date() > new Date(ts.registration_deadline)) {
+        throw new Error('Môn thi đấu này đã hết hạn đăng ký.');
+      }
     }
 
-    // Check duplicate team name in same TournamentSport
     const existingTeams = this.teamRepo.where('ts_id', data.ts_id);
     const duplicate = existingTeams.find(t => 
       t.name.toLowerCase().trim() === data.name.toLowerCase().trim() && 
       t.status !== TEAM_STATUS.WITHDRAWN && t.status !== TEAM_STATUS.REJECTED
     );
-    if (duplicate) {
-      throw new Error(`Tên đội "${data.name}" đã tồn tại trong môn thi đấu này.`);
-    }
+    if (duplicate) throw new Error(`Tên đội "${data.name}" đã tồn tại trong môn thi đấu này.`);
 
-    // Check maximum teams limit
     const approvedOrPending = existingTeams.filter(t => [TEAM_STATUS.APPROVED, TEAM_STATUS.PENDING].includes(t.status));
     if (approvedOrPending.length >= Number(ts.max_teams)) {
       throw new Error(`Môn thi đấu đã đạt số lượng đội tối đa (${ts.max_teams} đội).`);
     }
 
-    // Validate min/max players from Sport configuration
     const sport = this.sportRepo.getById(ts.sport_id);
     const playersList = Array.isArray(data.players) ? data.players : [];
+    const category = ts.category || '';
     
-    if (sport) {
+    // [MODIFY]: Logic ép số lượng VĐV theo Hạng mục Đơn/Đôi
+    if (category.includes('singles')) {
+      if (playersList.length !== 1) throw new Error(`Hạng mục Đơn bắt buộc phải có đúng 1 VĐV.`);
+    } else if (category.includes('doubles')) {
+      if (playersList.length !== 2) throw new Error(`Hạng mục Đôi bắt buộc phải có đúng 2 VĐV.`);
+    } else if (sport) {
       if (playersList.length < Number(sport.min_players_per_team)) {
-        throw new Error(`Số lượng thành viên tối thiểu cho môn ${sport.name} là ${sport.min_players_per_team} người.`);
+        throw new Error(`Số lượng tối thiểu cho môn ${sport.name} là ${sport.min_players_per_team} người.`);
       }
       if (playersList.length > Number(sport.max_players_per_team)) {
-        throw new Error(`Số lượng thành viên tối đa cho môn ${sport.name} là ${sport.max_players_per_team} người.`);
+        throw new Error(`Số lượng tối đa cho môn ${sport.name} là ${sport.max_players_per_team} người.`);
       }
     }
 
-    // Category gender validation
-    const category = ts.category || '';
     if (category.startsWith('mens_') || category === 'mens') {
       const invalid = playersList.find(p => p.gender && p.gender !== 'male');
       if (invalid) throw new Error(`Hạng mục Đôi Nam / Đơn Nam chỉ dành cho VĐV Nam.`);
@@ -76,20 +70,17 @@ class RegistrationService {
       if (playersList.length === 2) {
         const males = playersList.filter(p => p.gender === 'male').length;
         const females = playersList.filter(p => p.gender === 'female').length;
-        if (males !== 1 || females !== 1) {
-          throw new Error(`Hạng mục Đôi Nam Nữ phải gồm đúng 1 Nam và 1 Nữ.`);
-        }
+        if (males !== 1 || females !== 1) throw new Error(`Hạng mục Đôi Nam Nữ phải gồm đúng 1 Nam và 1 Nữ.`);
       }
     }
 
-    // Position rules validation (e.g. Football requires goalkeeper)
     if (sport && sport.position_rules) {
       try {
         const rules = typeof sport.position_rules === 'string' ? JSON.parse(sport.position_rules) : sport.position_rules;
         if (rules && rules.goalkeeper && rules.goalkeeper.min) {
           const gkCount = playersList.filter(p => p.position === 'goalkeeper').length;
           if (gkCount < rules.goalkeeper.min) {
-            throw new Error(`Đội thi đấu môn ${sport.name} bắt buộc phải có ít nhất ${rules.goalkeeper.min} Thủ môn (Goalkeeper).`);
+            throw new Error(`Đội thi đấu môn ${sport.name} bắt buộc phải có ít nhất ${rules.goalkeeper.min} Thủ môn.`);
           }
         }
       } catch (e) {
@@ -97,7 +88,6 @@ class RegistrationService {
       }
     }
 
-    // Unique Jersey Number validation
     const jerseys = playersList.map(p => String(p.jersey_number || '').trim()).filter(j => j !== '');
     const uniqueJerseys = new Set(jerseys);
     if (uniqueJerseys.size < jerseys.length) {
@@ -107,8 +97,6 @@ class RegistrationService {
     const captainEmail = data.captain_email || userEmail;
     const teamId = generateId('TM');
     const roleInTournament = auth.getUserRole(ts.tournament_id, userEmail);
-
-    // Auto approve if registered by organizer
     const initialStatus = (roleInTournament === 'organizer') ? TEAM_STATUS.APPROVED : TEAM_STATUS.PENDING;
 
     const newTeam = {
@@ -124,7 +112,6 @@ class RegistrationService {
 
     this.teamRepo.insert(newTeam);
 
-    // Save team players roster
     playersList.forEach((p, idx) => {
       const playerId = generateId('P');
       this.playerRepo.insert({
@@ -140,69 +127,43 @@ class RegistrationService {
       });
     });
 
-    // Auto assign roles if approved
     if (initialStatus === TEAM_STATUS.APPROVED) {
       auth.assignRole(ts.tournament_id, captainEmail, 'player', userEmail);
     }
 
-    // Send confirmation email
-    try {
-      getEmailService().sendRegistrationConfirmation(teamId);
-    } catch (e) {
-      if (typeof Logger !== 'undefined' && Logger.log) {
-        Logger.log('Không thể gửi email xác nhận: ' + e.message);
-      }
-    }
-
+    try { getEmailService().sendRegistrationConfirmation(teamId); } catch (e) {}
     return newTeam;
   }
 
-  /**
-   * Approve team registration (Organizer only or System Webhook)
-   */
   approveTeam(teamId, bypassAuth = false) {
     const team = this.teamRepo.getById(teamId);
     if (!team) throw new Error('Không tìm thấy thông tin đội.');
 
     const ts = this.tsRepo.getById(team.ts_id);
     const auth = getAuthService();
-    if (!bypassAuth) {
-      auth.checkPermission(ts.tournament_id, ['organizer']);
-    }
+    if (!bypassAuth) auth.checkPermission(ts.tournament_id, ['organizer']);
 
     const updated = this.teamRepo.update(teamId, { status: TEAM_STATUS.APPROVED });
-
     const players = this.playerRepo.where('team_id', teamId);
     const userEmail = (bypassAuth ? '' : auth.getCurrentUserEmail()) || team.captain_email;
     
     auth.assignRole(ts.tournament_id, team.captain_email, 'player', userEmail);
     players.forEach(p => {
-      if (p.email) {
-        auth.assignRole(ts.tournament_id, p.email, 'player', userEmail);
-      }
+      if (p.email) auth.assignRole(ts.tournament_id, p.email, 'player', userEmail);
     });
 
     emitEvent(SYSTEM_EVENTS.TEAM_APPROVED, { teamId: teamId, tsId: team.ts_id });
-
     return updated;
   }
 
-  /**
-   * Reject team registration (Organizer only)
-   */
   rejectTeam(teamId) {
     const team = this.teamRepo.getById(teamId);
     if (!team) throw new Error('Không tìm thấy thông tin đội.');
-
     const ts = this.tsRepo.getById(team.ts_id);
     getAuthService().checkPermission(ts.tournament_id, ['organizer']);
-
     return this.teamRepo.update(teamId, { status: TEAM_STATUS.REJECTED });
   }
 
-  /**
-   * Withdraw team registration
-   */
   withdrawTeam(teamId) {
     const team = this.teamRepo.getById(teamId);
     if (!team) throw new Error('Không tìm thấy thông tin đội.');
@@ -217,8 +178,6 @@ class RegistrationService {
     }
 
     const updated = this.teamRepo.update(teamId, { status: TEAM_STATUS.WITHDRAWN });
-
-    // If matches already exist, mark future matches as cancelled/walkover
     const matchRepo = new BaseRepository('Match', 'match_id');
     const matches = matchRepo.where('ts_id', team.ts_id);
     matches.forEach(m => {
@@ -230,37 +189,25 @@ class RegistrationService {
         }
       }
     });
-
     return updated;
   }
 
-  /**
-   * Get all teams for a TournamentSport with members list
-   */
   getTeamsByTournamentSport(tsId) {
     const teams = this.teamRepo.where('ts_id', tsId);
     const allPlayers = this.playerRepo.getAll();
-
     return teams.map(t => {
       const roster = allPlayers.filter(p => p.team_id === t.team_id);
       return Object.assign({}, t, { players: roster });
     });
   }
 
-  /**
-   * Get single team by ID with members list
-   */
   getTeamById(teamId) {
     const team = this.teamRepo.getById(teamId);
     if (!team) return null;
-
     const players = this.playerRepo.where('team_id', teamId);
     return Object.assign({}, team, { players: players });
   }
 
-  /**
-   * Validate raw import rows for a TournamentSport before creation
-   */
   validateImportData(tsId, rows) {
     if (!Array.isArray(rows) || rows.length === 0) {
       return { valid: false, errors: ['File dữ liệu không có dòng nào.'], parsedTeams: [] };
@@ -270,8 +217,6 @@ class RegistrationService {
     if (!ts) return { valid: false, errors: ['Môn thi đấu không tồn tại.'] };
 
     const sport = this.sportRepo.getById(ts.sport_id);
-
-    // Group rows by team name
     const teamMap = {};
     rows.forEach((row, idx) => {
       const teamName = (row.team_name || row['Tên Đội'] || row['Tên Cặp'] || `Đội ${idx + 1}`).trim();
@@ -283,37 +228,27 @@ class RegistrationService {
         };
       }
       
-      // Doubles import row support (VĐV 1 + VĐV 2 in 1 row)
       if (row['Tên VĐV 1'] || row['Tên VĐV 2']) {
         if (row['Tên VĐV 1']) {
           teamMap[teamName].players.push({
-            name: row['Tên VĐV 1'],
-            email: row['Email VĐV 1'] || '',
+            name: row['Tên VĐV 1'], email: row['Email VĐV 1'] || '',
             gender: row['Giới tính 1'] === 'Nam' ? 'male' : (row['Giới tính 1'] === 'Nữ' ? 'female' : (row['Giới tính 1'] || '')),
-            phone: row['SĐT 1'] || '',
-            jersey_number: row['Số Áo 1'] || 1,
-            position: row['Vị Trí 1'] || ''
+            phone: row['SĐT 1'] || '', jersey_number: row['Số Áo 1'] || 1, position: row['Vị Trí 1'] || ''
           });
         }
         if (row['Tên VĐV 2']) {
           teamMap[teamName].players.push({
-            name: row['Tên VĐV 2'],
-            email: row['Email VĐV 2'] || '',
+            name: row['Tên VĐV 2'], email: row['Email VĐV 2'] || '',
             gender: row['Giới tính 2'] === 'Nam' ? 'male' : (row['Giới tính 2'] === 'Nữ' ? 'female' : (row['Giới tính 2'] || '')),
-            phone: row['SĐT 2'] || '',
-            jersey_number: row['Số Áo 2'] || 2,
-            position: row['Vị Trí 2'] || ''
+            phone: row['SĐT 2'] || '', jersey_number: row['Số Áo 2'] || 2, position: row['Vị Trí 2'] || ''
           });
         }
       } else {
-        // Standard team import row (1 player per row)
         teamMap[teamName].players.push({
           name: row.player_name || row['Tên VĐV'] || row.name || '',
           email: row.player_email || row['Email VĐV'] || row.email || '',
           gender: (row.gender === 'Nam' || row['Giới tính'] === 'Nam') ? 'male' : ((row.gender === 'Nữ' || row['Giới tính'] === 'Nữ') ? 'female' : (row.gender || row['Giới tính'] || '')),
-          phone: row.phone || row['SĐT'] || '',
-          jersey_number: row.jersey_number || row['Số Áo'] || '',
-          position: row.position || row['Vị Trí'] || ''
+          phone: row.phone || row['SĐT'] || '', jersey_number: row.jersey_number || row['Số Áo'] || '', position: row.position || row['Vị Trí'] || ''
         });
       }
     });
@@ -322,122 +257,67 @@ class RegistrationService {
     const errors = [];
 
     parsedTeams.forEach(t => {
-      if (sport) {
-        // 1. Min/max players
-        if (t.players.length < Number(sport.min_players_per_team)) {
-          errors.push(`Đội "${t.name}" chỉ có ${t.players.length} VĐV (Yêu cầu tối thiểu ${sport.min_players_per_team}).`);
-        }
-        if (t.players.length > Number(sport.max_players_per_team)) {
-          errors.push(`Đội "${t.name}" có ${t.players.length} VĐV (Yêu cầu tối đa ${sport.max_players_per_team}).`);
-        }
+      const category = ts.category || '';
+      
+      // [MODIFY]: Logic ép số lượng VĐV khi import CSV
+      if (category.includes('singles') && t.players.length !== 1) {
+        errors.push(`Đội "${t.name}": Hạng mục Đơn bắt buộc phải có đúng 1 VĐV.`);
+      } else if (category.includes('doubles') && t.players.length !== 2) {
+        errors.push(`Đội "${t.name}": Hạng mục Đôi bắt buộc phải có đúng 2 VĐV.`);
+      } else if (sport && !category.includes('singles') && !category.includes('doubles')) {
+        if (t.players.length < Number(sport.min_players_per_team)) errors.push(`Đội "${t.name}" chỉ có ${t.players.length} VĐV (Tối thiểu ${sport.min_players_per_team}).`);
+        if (t.players.length > Number(sport.max_players_per_team)) errors.push(`Đội "${t.name}" có ${t.players.length} VĐV (Tối đa ${sport.max_players_per_team}).`);
+      }
 
-        // 2. Category gender validation
-        const category = ts.category || '';
-        if (category.startsWith('mens_') || category === 'mens') {
-          const invalid = t.players.find(p => p.gender && p.gender !== 'male');
-          if (invalid) errors.push(`Đội "${t.name}": Hạng mục Đôi Nam / Đơn Nam chỉ dành cho VĐV Nam.`);
-        } else if (category.startsWith('womens_') || category === 'womens') {
-          const invalid = t.players.find(p => p.gender && p.gender !== 'female');
-          if (invalid) errors.push(`Đội "${t.name}": Hạng mục Đôi Nữ / Đơn Nữ chỉ dành cho VĐV Nữ.`);
-        } else if (category === 'mixed_doubles' || category === 'mixed') {
-          if (t.players.length === 2) {
-            const males = t.players.filter(p => p.gender === 'male').length;
-            const females = t.players.filter(p => p.gender === 'female').length;
-            if (males !== 1 || females !== 1) {
-              errors.push(`Đội "${t.name}": Hạng mục Đôi Nam Nữ phải gồm đúng 1 Nam và 1 Nữ.`);
-            }
-          }
-        }
-
-        // 3. Position rules validation (e.g. Football goalkeeper requirement)
-        if (sport.position_rules) {
-          try {
-            const rules = typeof sport.position_rules === 'string' ? JSON.parse(sport.position_rules) : sport.position_rules;
-            if (rules && rules.goalkeeper && rules.goalkeeper.min) {
-              const gkCount = t.players.filter(p => p.position === 'goalkeeper').length;
-              if (gkCount < rules.goalkeeper.min) {
-                errors.push(`Đội "${t.name}" thi đấu môn ${sport.name} bắt buộc phải có ít nhất ${rules.goalkeeper.min} Thủ môn (Goalkeeper).`);
-              }
-            }
-          } catch (e) {}
-        }
-
-        // 4. Unique Jersey Number validation
-        const jerseys = t.players.map(p => String(p.jersey_number || '').trim()).filter(j => j !== '');
-        const uniqueJerseys = new Set(jerseys);
-        if (uniqueJerseys.size < jerseys.length) {
-          errors.push(`Đội "${t.name}": Số áo của các thành viên trong đội không được trùng nhau.`);
+      if (category.startsWith('mens_') || category === 'mens') {
+        if (t.players.find(p => p.gender && p.gender !== 'male')) errors.push(`Đội "${t.name}": Hạng mục Đôi Nam / Đơn Nam chỉ dành cho Nam.`);
+      } else if (category.startsWith('womens_') || category === 'womens') {
+        if (t.players.find(p => p.gender && p.gender !== 'female')) errors.push(`Đội "${t.name}": Hạng mục Đôi Nữ / Đơn Nữ chỉ dành cho Nữ.`);
+      } else if (category === 'mixed_doubles' || category === 'mixed') {
+        if (t.players.length === 2) {
+          const males = t.players.filter(p => p.gender === 'male').length;
+          const females = t.players.filter(p => p.gender === 'female').length;
+          if (males !== 1 || females !== 1) errors.push(`Đội "${t.name}": Hạng mục Đôi Nam Nữ phải gồm đúng 1 Nam và 1 Nữ.`);
         }
       }
     });
 
-    return {
-      valid: errors.length === 0,
-      errors: errors,
-      parsedTeams: parsedTeams
-    };
+    return { valid: errors.length === 0, errors: errors, parsedTeams: parsedTeams };
   }
 
-  /**
-   * Bulk Import Teams into TournamentSport
-   */
   importTeamsFromCsv(tsId, rows) {
     const ts = this.tsRepo.getById(tsId);
     if (!ts) throw new Error('Không tìm thấy thông tin môn thi đấu.');
-
     getAuthService().checkPermission(ts.tournament_id, ['organizer', 'editor']);
 
     const validation = this.validateImportData(tsId, rows);
-    if (!validation.valid && validation.errors.length > 0) {
-      throw new Error('Dữ liệu import không hợp lệ:\n' + validation.errors.join('\n'));
-    }
+    if (!validation.valid && validation.errors.length > 0) throw new Error('Dữ liệu import không hợp lệ:\n' + validation.errors.join('\n'));
 
     const createdTeams = [];
     validation.parsedTeams.forEach(tData => {
-      const registered = this.registerTeam({
-        ts_id: tsId,
-        name: tData.name,
-        captain_email: tData.captain_email || (tData.players[0] ? tData.players[0].email : ''),
-        players: tData.players
-      });
-      // Auto approve imported teams
+      const registered = this.registerTeam({ ts_id: tsId, name: tData.name, captain_email: tData.captain_email || (tData.players[0] ? tData.players[0].email : ''), players: tData.players });
       this.approveTeam(registered.team_id);
       createdTeams.push(registered);
     });
 
-    return {
-      success: true,
-      message: `Đã import thành công ${createdTeams.length} đội thi đấu.`,
-      teams: createdTeams
-    };
+    return { success: true, message: `Đã import thành công ${createdTeams.length} đội.`, teams: createdTeams };
   }
 
-  /**
-   * Webhook Handler for Auto-Billing / Payment Gateways (Casso / Sepay)
-   */
   handlePaymentWebhook(payload) {
-    if (!payload || !payload.content) {
-      return { success: false, message: 'Invalid payload' };
-    }
-
-    // Look for Team ID or Registration reference in transfer description
+    if (!payload || !payload.content) return { success: false, message: 'Invalid payload' };
     const content = String(payload.content || payload.description || '');
     const teamIdMatch = content.match(/TM[a-zA-Z0-9_-]+/i);
-    
     if (teamIdMatch) {
       const teamId = teamIdMatch[0];
       const team = this.teamRepo.getById(teamId);
       if (team && team.status === TEAM_STATUS.PENDING) {
         this.approveTeam(team.team_id, true);
-        return { success: true, message: `Auto approved team ${team.team_id} via payment webhook.` };
+        return { success: true, message: `Auto approved team ${team.team_id} via webhook.` };
       }
     }
-
     return { success: true, message: 'Webhook processed without matching pending team.' };
   }
-  /**
-   * Get all teams associated with current user (as captain or member)
-   */
+
   getMyRegisteredTeams() {
     const auth = getAuthService();
     const userEmail = auth.getCurrentUserEmail();
@@ -466,50 +346,18 @@ class RegistrationService {
   }
 }
 
-// Singleton Instance Helper
 let _teamServiceInstance = null;
 function getTeamService() {
-  if (!_teamServiceInstance) {
-    _teamServiceInstance = new RegistrationService();
-  }
+  if (!_teamServiceInstance) _teamServiceInstance = new RegistrationService();
   return _teamServiceInstance;
 }
 
-/**
- * Server Exposed APIs for Client
- */
-function apiRegisterTeam(data) {
-  return getTeamService().registerTeam(data);
-}
-
-function apiApproveTeam(teamId) {
-  return getTeamService().approveTeam(teamId);
-}
-
-function apiRejectTeam(teamId) {
-  return getTeamService().rejectTeam(teamId);
-}
-
-function apiWithdrawTeam(teamId) {
-  return getTeamService().withdrawTeam(teamId);
-}
-
-function apiGetMyRegisteredTeams() {
-  return getTeamService().getMyRegisteredTeams();
-}
-
-function apiGetTeamsByTournamentSport(tsId) {
-  return getTeamService().getTeamsByTournamentSport(tsId);
-}
-
-function apiGetTeamById(teamId) {
-  return getTeamService().getTeamById(teamId);
-}
-
-function apiValidateImportData(tsId, rows) {
-  return getTeamService().validateImportData(tsId, rows);
-}
-
-function apiImportTeamsFromCsv(tsId, rows) {
-  return getTeamService().importTeamsFromCsv(tsId, rows);
-}
+function apiRegisterTeam(data) { return getTeamService().registerTeam(data); }
+function apiApproveTeam(teamId) { return getTeamService().approveTeam(teamId); }
+function apiRejectTeam(teamId) { return getTeamService().rejectTeam(teamId); }
+function apiWithdrawTeam(teamId) { return getTeamService().withdrawTeam(teamId); }
+function apiGetMyRegisteredTeams() { return getTeamService().getMyRegisteredTeams(); }
+function apiGetTeamsByTournamentSport(tsId) { return getTeamService().getTeamsByTournamentSport(tsId); }
+function apiGetTeamById(teamId) { return getTeamService().getTeamById(teamId); }
+function apiValidateImportData(tsId, rows) { return getTeamService().validateImportData(tsId, rows); }
+function apiImportTeamsFromCsv(tsId, rows) { return getTeamService().importTeamsFromCsv(tsId, rows); }

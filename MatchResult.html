@@ -49,16 +49,17 @@
     const wrapper = document.getElementById('match-result-wrapper');
     if (!wrapper) return;
 
-    // Detect sport scoring type from sport name or categories if available
     const sportName = App.state.params.sportName || '';
     const isSetBasedSport = sportName.includes('Pickleball') || sportName.includes('Cầu lông') || sportName.includes('Bóng bàn') || sportName.includes('Bóng chuyền');
     const isPickleball = sportName.includes('Pickleball');
 
-    // Parse extra data if present
     let extraObj = {};
     if (m.notes && m.notes.startsWith('{')) {
       try { extraObj = JSON.parse(m.notes); } catch (e) {}
     }
+
+    // [MODIFY]: Lấy dữ liệu Set cũ nếu có để hiển thị lại
+    const sets = extraObj.sets || {};
 
     wrapper.innerHTML = `
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5rem; flex-wrap:wrap; gap:1rem;">
@@ -71,7 +72,6 @@
         <button class="btn btn-secondary btn-sm" onclick="App.router.navigateTo('schedule', { tournamentId: '${App.state.params.tournamentId || ''}' })">← Quay lại</button>
       </div>
 
-      <!-- Match State Banner & Quick Actions -->
       <div class="card" style="margin-bottom:1.5rem; background:rgba(30,41,59,0.9);">
         <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem;">
           <div style="display:flex; align-items:center; gap:0.75rem;">
@@ -96,37 +96,33 @@
         </div>
       </div>
 
-      <!-- Score Entry Card -->
       <div class="card">
         <form id="match-score-form" onsubmit="handleUpdateScoreSubmit(event, '${m.match_id}')">
           
-          <!-- Overall Summary Score -->
           <div class="grid-2" style="align-items:center; gap:1.5rem; margin-bottom:1.5rem;">
-            <!-- Team 1 Card -->
             <div style="text-align:center; background:rgba(15,23,42,0.7); padding:1.25rem; border-radius:var(--radius-md); border:1px solid var(--border);">
               <h3 style="margin-bottom:0.75rem; font-size:1.2rem; color:#ffffff;">${m.team1_name}</h3>
               <div class="form-group" style="margin-bottom:0;">
                 <label class="form-label">${isSetBasedSport ? 'Tổng Set Thắng (Đội 1)' : 'Tỉ số Đội 1'}</label>
-                <input type="number" class="form-control" id="score-t1" required value="${m.team1_score !== undefined ? m.team1_score : ''}" style="font-size:2rem; text-align:center; font-weight:800; height:56px;">
+                <input type="number" class="form-control" id="score-t1" required value="${m.team1_score !== undefined ? m.team1_score : ''}" style="font-size:2rem; text-align:center; font-weight:800; height:56px;" ${isSetBasedSport ? 'readonly' : ''}>
               </div>
             </div>
 
-            <!-- Team 2 Card -->
             <div style="text-align:center; background:rgba(15,23,42,0.7); padding:1.25rem; border-radius:var(--radius-md); border:1px solid var(--border);">
               <h3 style="margin-bottom:0.75rem; font-size:1.2rem; color:#ffffff;">${m.team2_name}</h3>
               <div class="form-group" style="margin-bottom:0;">
                 <label class="form-label">${isSetBasedSport ? 'Tổng Set Thắng (Đội 2)' : 'Tỉ số Đội 2'}</label>
-                <input type="number" class="form-control" id="score-t2" required value="${m.team2_score !== undefined ? m.team2_score : ''}" style="font-size:2rem; text-align:center; font-weight:800; height:56px;">
+                <input type="number" class="form-control" id="score-t2" required value="${m.team2_score !== undefined ? m.team2_score : ''}" style="font-size:2rem; text-align:center; font-weight:800; height:56px;" ${isSetBasedSport ? 'readonly' : ''}>
               </div>
             </div>
           </div>
 
-          <!-- Multi-Set Detail Entry (For Pickleball, Badminton, Volleyball, Table tennis) -->
           ${isSetBasedSport ? `
             <div style="background:rgba(15,23,42,0.5); padding:1.25rem; border-radius:var(--radius-md); border:1px solid var(--border-highlight); margin-bottom:1.5rem;">
               <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.75rem;">
                 <h4 style="color:var(--accent);">🎾 Điểm Chi Tiết Từng Set</h4>
-                <span style="font-size:0.8rem; color:var(--text-muted);">(Tự động tính tổng Set thắng)</span>
+                <!-- [MODIFY]: Hiển thị mốc điểm mục tiêu -->
+                <span style="font-size:0.85rem; color:var(--warning); font-weight:bold;">(Mốc điểm mục tiêu: Theo cấu hình giải đấu)</span>
               </div>
 
               <table class="set-score-table">
@@ -141,22 +137,21 @@
                 <tbody>
                   <tr>
                     <td style="font-weight:600; color:#fff;">${m.team1_name}</td>
-                    <td><input type="number" class="set-score-input" id="set1-t1" min="0" oninput="recalcSetsWon()"></td>
-                    <td><input type="number" class="set-score-input" id="set2-t1" min="0" oninput="recalcSetsWon()"></td>
-                    <td><input type="number" class="set-score-input" id="set3-t1" min="0" oninput="recalcSetsWon()"></td>
+                    <td><input type="number" class="set-score-input" id="set1-t1" min="0" value="${sets.set1_a || ''}" oninput="recalcSetsWon()"></td>
+                    <td><input type="number" class="set-score-input" id="set2-t1" min="0" value="${sets.set2_a || ''}" oninput="recalcSetsWon()"></td>
+                    <td><input type="number" class="set-score-input" id="set3-t1" min="0" value="${sets.set3_a || ''}" oninput="recalcSetsWon()"></td>
                   </tr>
                   <tr>
                     <td style="font-weight:600; color:#fff;">${m.team2_name}</td>
-                    <td><input type="number" class="set-score-input" id="set1-t2" min="0" oninput="recalcSetsWon()"></td>
-                    <td><input type="number" class="set-score-input" id="set2-t2" min="0" oninput="recalcSetsWon()"></td>
-                    <td><input type="number" class="set-score-input" id="set3-t2" min="0" oninput="recalcSetsWon()"></td>
+                    <td><input type="number" class="set-score-input" id="set1-t2" min="0" value="${sets.set1_b || ''}" oninput="recalcSetsWon()"></td>
+                    <td><input type="number" class="set-score-input" id="set2-t2" min="0" value="${sets.set2_b || ''}" oninput="recalcSetsWon()"></td>
+                    <td><input type="number" class="set-score-input" id="set3-t2" min="0" value="${sets.set3_b || ''}" oninput="recalcSetsWon()"></td>
                   </tr>
                 </tbody>
               </table>
             </div>
           ` : ''}
 
-          <!-- Pickleball Extra Strategy Data -->
           ${isPickleball ? `
             <div style="background:rgba(15,23,42,0.4); padding:1rem; border-radius:var(--radius-md); border:1px solid var(--border); margin-bottom:1.5rem;">
               <h4 style="color:var(--secondary); margin-bottom:0.75rem; font-size:0.95rem;">🏸 Cấu hình lượt giao bóng Pickleball (Strategy Data)</h4>
@@ -164,15 +159,15 @@
                 <div class="form-group" style="margin-bottom:0;">
                   <label class="form-label" style="font-size:0.85rem;">Người giao bóng (Server)</label>
                   <select class="form-control" id="pb-server">
-                    <option value="1">Lượt giao bóng 1 (Server 1)</option>
-                    <option value="2">Lượt giao bóng 2 (Server 2)</option>
+                    <option value="1" ${extraObj.server === '1' ? 'selected' : ''}>Lượt giao bóng 1 (Server 1)</option>
+                    <option value="2" ${extraObj.server === '2' ? 'selected' : ''}>Lượt giao bóng 2 (Server 2)</option>
                   </select>
                 </div>
                 <div class="form-group" style="margin-bottom:0;">
                   <label class="form-label" style="font-size:0.85rem;">Vị trí sân</label>
                   <select class="form-control" id="pb-position">
-                    <option value="right">Bên Phải (Right Court)</option>
-                    <option value="left">Bên Trái (Left Court)</option>
+                    <option value="right" ${extraObj.position === 'right' ? 'selected' : ''}>Bên Phải (Right Court)</option>
+                    <option value="left" ${extraObj.position === 'left' ? 'selected' : ''}>Bên Trái (Left Court)</option>
                   </select>
                 </div>
               </div>
@@ -181,7 +176,8 @@
 
           <div class="form-group" style="margin-bottom:1.5rem;">
             <label class="form-label">Ghi chú của Trọng tài (Thẻ phạt, sự cố, biên bản...)</label>
-            <textarea class="form-control" id="match-notes" rows="2" placeholder="Nhập ghi chú trận đấu...">${m.notes || ''}</textarea>
+            <!-- [MODIFY]: Ẩn bớt object JSON nếu có để giao diện gọn gàng -->
+            <textarea class="form-control" id="match-notes" rows="2" placeholder="Nhập ghi chú trận đấu...">${extraObj.text || m.notes || ''}</textarea>
           </div>
 
           <div style="display:flex; justify-content:flex-end; gap:1rem; flex-wrap:wrap;">
@@ -191,30 +187,52 @@
         </form>
       </div>
     `;
+
+    // Gọi hàm tính toán ngay lúc load form để khóa Set 3 nếu đã có kết quả cũ
+    if (isSetBasedSport) setTimeout(recalcSetsWon, 100);
   }
 
+  // [MODIFY]: Logic tự động tính Set và Khóa Set 3 nếu thắng 2-0
   function recalcSetsWon() {
     const s1_t1 = parseInt(document.getElementById('set1-t1')?.value || 0, 10);
     const s1_t2 = parseInt(document.getElementById('set1-t2')?.value || 0, 10);
     const s2_t1 = parseInt(document.getElementById('set2-t1')?.value || 0, 10);
     const s2_t2 = parseInt(document.getElementById('set2-t2')?.value || 0, 10);
-    const s3_t1 = parseInt(document.getElementById('set3-t1')?.value || 0, 10);
-    const s3_t2 = parseInt(document.getElementById('set3-t2')?.value || 0, 10);
+    let s3_t1 = parseInt(document.getElementById('set3-t1')?.value || 0, 10);
+    let s3_t2 = parseInt(document.getElementById('set3-t2')?.value || 0, 10);
 
     let setsWonT1 = 0;
     let setsWonT2 = 0;
 
+    // Tính kết quả Set 1
     if (s1_t1 > 0 || s1_t2 > 0) {
       if (s1_t1 > s1_t2) setsWonT1++;
       else if (s1_t2 > s1_t1) setsWonT2++;
     }
+    
+    // Tính kết quả Set 2
     if (s2_t1 > 0 || s2_t2 > 0) {
       if (s2_t1 > s2_t2) setsWonT1++;
       else if (s2_t2 > s2_t1) setsWonT2++;
     }
-    if (s3_t1 > 0 || s3_t2 > 0) {
-      if (s3_t1 > s3_t2) setsWonT1++;
-      else if (s3_t2 > s3_t1) setsWonT2++;
+
+    const set3InputT1 = document.getElementById('set3-t1');
+    const set3InputT2 = document.getElementById('set3-t2');
+
+    // Nếu 1 đội đã thắng 2 Set -> Khóa Set 3
+    if (setsWonT1 === 2 || setsWonT2 === 2) {
+      if (set3InputT1) { set3InputT1.disabled = true; set3InputT1.value = ''; s3_t1 = 0; }
+      if (set3InputT2) { set3InputT2.disabled = true; set3InputT2.value = ''; s3_t2 = 0; }
+    } else {
+      // Chưa có đội nào chạm 2 Set -> Mở khóa Set 3
+      if (set3InputT1) set3InputT1.disabled = false;
+      if (set3InputT2) set3InputT2.disabled = false;
+      
+      // Tính kết quả Set 3 (nếu có nhập)
+      if (s3_t1 > 0 || s3_t2 > 0) {
+        if (s3_t1 > s3_t2) setsWonT1++;
+        else if (s3_t2 > s3_t1) setsWonT2++;
+      }
     }
 
     const t1Input = document.getElementById('score-t1');
@@ -252,19 +270,33 @@
 
     const t1Score = document.getElementById('score-t1').value;
     const t2Score = document.getElementById('score-t2').value;
-    const notes = document.getElementById('match-notes').value;
+    const notesText = document.getElementById('match-notes').value;
 
-    let extraData = {};
-    const pbServer = document.getElementById('pb-server');
-    const pbPosition = document.getElementById('pb-position');
-    if (pbServer && pbPosition) {
-      extraData = {
-        server: pbServer.value,
-        position: pbPosition.value
+    let extraData = { text: notesText };
+    
+    // Thu thập điểm các Set
+    if (document.getElementById('set1-t1')) {
+      extraData.sets = {
+        set1_a: document.getElementById('set1-t1').value,
+        set1_b: document.getElementById('set1-t2').value,
+        set2_a: document.getElementById('set2-t1').value,
+        set2_b: document.getElementById('set2-t2').value,
+        set3_a: document.getElementById('set3-t1').value,
+        set3_b: document.getElementById('set3-t2').value
       };
     }
 
-    App.server.call('apiUpdateMatchResult', matchId, t1Score, t2Score, notes)
+    const pbServer = document.getElementById('pb-server');
+    const pbPosition = document.getElementById('pb-position');
+    if (pbServer && pbPosition) {
+      extraData.server = pbServer.value;
+      extraData.position = pbPosition.value;
+    }
+
+    // Nén extraData vào notes để gửi xuống backend
+    const finalNotes = Object.keys(extraData).length > 1 ? JSON.stringify(extraData) : notesText;
+
+    App.server.call('apiUpdateMatchResult', matchId, t1Score, t2Score, finalNotes)
       .then(res => {
         App.toast.show('Cập nhật tỉ số trận đấu và bảng xếp hạng thành công!', 'success');
         App.router.navigateTo('schedule', { tournamentId: App.state.params.tournamentId || '' });

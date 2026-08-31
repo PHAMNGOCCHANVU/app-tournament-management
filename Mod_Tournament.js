@@ -16,7 +16,6 @@ class TournamentConfigService {
     const auth = getAuthService();
     let userEmail = auth.getCurrentUserEmail();
     
-    // Fallback: If Session email is masked, use organizer_email from form input
     if (!userEmail && data.organizer_email) {
       userEmail = String(data.organizer_email).toLowerCase().trim();
     }
@@ -46,11 +45,8 @@ class TournamentConfigService {
     };
 
     this.tournamentRepo.insert(tournament);
-
-    // Auto-assign organizer role in TournamentRole table
     auth.assignRole(tournamentId, userEmail, 'organizer', userEmail);
 
-    // Add initial sports if provided
     if (Array.isArray(data.sports) && data.sports.length > 0) {
       data.sports.forEach(sportConfig => {
         this.addSportToTournament(tournamentId, sportConfig, userEmail);
@@ -94,7 +90,6 @@ class TournamentConfigService {
       throw new Error('Chỉ có thể xóa giải đấu ở trạng thái Nháp (draft).');
     }
 
-    // Cascade delete related records
     const tsList = this.tsRepo.where('tournament_id', tournamentId);
     tsList.forEach(ts => {
       this.teamRepo.deleteWhere('ts_id', ts.ts_id);
@@ -107,18 +102,13 @@ class TournamentConfigService {
     return this.tournamentRepo.delete(tournamentId);
   }
 
-  /**
-   * Get List of Tournaments with filters
-   */
   getTournamentList(filters = {}) {
     let tournaments = this.tournamentRepo.getAll();
 
-    // Filter by status
     if (filters.status && filters.status !== 'all') {
       tournaments = tournaments.filter(t => t.status === filters.status);
     }
 
-    // Filter by search query (name / location)
     if (filters.search) {
       const q = filters.search.toLowerCase();
       tournaments = tournaments.filter(t => 
@@ -127,7 +117,6 @@ class TournamentConfigService {
       );
     }
 
-    // Enrich data with sports count & total teams count
     const allTS = this.tsRepo.getAll();
     const allTeams = this.teamRepo.getAll();
 
@@ -143,9 +132,6 @@ class TournamentConfigService {
     }).sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
   }
 
-  /**
-   * Get single Tournament by ID with full details
-   */
   getTournamentById(tournamentId) {
     const tournament = this.tournamentRepo.getById(tournamentId);
     if (!tournament) return null;
@@ -176,10 +162,35 @@ class TournamentConfigService {
   }
 
   /**
-   * Add a Sport configuration to a Tournament (TournamentSport)
+   * [MODIFY]: Nâng cấp logic addSportToTournament theo Option 2
    */
   addSportToTournament(tournamentId, config) {
     getAuthService().checkPermission(tournamentId, ['organizer', 'editor']);
+
+    const tournament = this.tournamentRepo.getById(tournamentId);
+    if (!tournament) throw new Error('Không tìm thấy giải đấu.');
+
+    // 1. Validate Hạn chót đăng ký
+    if (config.registration_deadline && tournament.start_date) {
+      if (new Date(config.registration_deadline) > new Date(tournament.start_date)) {
+        throw new Error('Hạn chót đăng ký không thể sau ngày bắt đầu giải đấu.');
+      }
+    }
+
+    // 2. Điểm hòa mặc định theo môn
+    let ptsDraw = !isNaN(Number(config.points_for_draw)) ? Number(config.points_for_draw) : 1;
+    if (['S002', 'S003', 'S004', 'S005'].includes(config.sport_id)) {
+      ptsDraw = 0; // Cầu lông, Bóng bàn, Pickleball, Bóng chuyền ép điểm hòa = 0
+    }
+
+    // 3. Cấu hình mốc điểm mỗi set
+    let ptsTarget = Number(config.points_target_per_set);
+    if (!ptsTarget) {
+      if (config.sport_id === 'S004' || config.sport_id === 'S005') ptsTarget = 11; // Bóng bàn, Pickleball
+      else if (config.sport_id === 'S003') ptsTarget = 21; // Cầu lông
+      else if (config.sport_id === 'S002') ptsTarget = 25; // Bóng chuyền
+      else ptsTarget = 0; // Bóng đá thì không dùng set
+    }
 
     const tsId = generateId('TS');
     const newTS = {
@@ -190,22 +201,20 @@ class TournamentConfigService {
       max_teams: Number(config.max_teams) || 8,
       min_teams: Number(config.min_teams) || 2,
       points_for_win: !isNaN(Number(config.points_for_win)) ? Number(config.points_for_win) : 3,
-      points_for_draw: !isNaN(Number(config.points_for_draw)) ? Number(config.points_for_draw) : 1,
+      points_for_draw: ptsDraw,
       points_for_loss: !isNaN(Number(config.points_for_loss)) ? Number(config.points_for_loss) : 0,
       num_groups: Number(config.num_groups) || 1,
       teams_advance_per_group: Number(config.teams_advance_per_group) || 2,
       registration_deadline: config.registration_deadline || '',
       status: TOURNAMENT_STATUS.OPEN,
       category: config.category || '',
-      skill_level: config.skill_level || ''
+      skill_level: config.skill_level || '',
+      points_target_per_set: ptsTarget
     };
 
     return this.tsRepo.insert(newTS);
   }
 
-  /**
-   * Update Tournament Status Lifecycle
-   */
   updateStatus(tournamentId, newStatus) {
     getAuthService().checkPermission(tournamentId, ['organizer']);
 
@@ -239,9 +248,6 @@ class TournamentConfigService {
   }
 }
 
-/**
- * Setup Database: Initialize all sheets with headers and Seed Data
- */
 function setupDatabase() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   
@@ -253,12 +259,10 @@ function setupDatabase() {
       sheet.appendRow(headers);
       sheet.getRange(1, 1, 1, headers.length).setFontWeight("bold").setBackground("#e5e7eb");
     } else {
-      // Schema Migration: Ensure all columns are present in the exact order
       const lastCol = sheet.getLastColumn();
       if (lastCol === 0) {
         sheet.appendRow(headers);
       } else {
-        // Overwrite header row to align with current schema
         sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
       }
       sheet.getRange(1, 1, 1, headers.length).setFontWeight("bold").setBackground("#e5e7eb");
@@ -273,7 +277,6 @@ function setupDatabase() {
     if (!existing) {
       sportRepo.insert(s);
     } else {
-      // Update existing records with the new fields
       sportRepo.update(s.sport_id, {
         categories: s.categories,
         positions: s.positions,
@@ -290,7 +293,6 @@ function setupDatabase() {
   return { success: true, message: 'Database setup completed successfully.' };
 }
 
-// Singleton Instance Helper
 let _tournamentServiceInstance = null;
 function getTournamentService() {
   if (!_tournamentServiceInstance) {
@@ -299,37 +301,11 @@ function getTournamentService() {
   return _tournamentServiceInstance;
 }
 
-/**
- * Server Exposed APIs for Client
- */
-function apiCreateTournament(data) {
-  return getTournamentService().createTournament(data);
-}
-
-function apiUpdateTournament(tournamentId, data) {
-  return getTournamentService().updateTournament(tournamentId, data);
-}
-
-function apiDeleteTournament(tournamentId) {
-  return getTournamentService().deleteTournament(tournamentId);
-}
-
-function apiGetTournamentList(filters) {
-  return getTournamentService().getTournamentList(filters);
-}
-
-function apiGetTournamentById(tournamentId) {
-  return getTournamentService().getTournamentById(tournamentId);
-}
-
-function apiAddSportToTournament(tournamentId, config) {
-  return getTournamentService().addSportToTournament(tournamentId, config);
-}
-
-function apiUpdateTournamentStatus(tournamentId, newStatus) {
-  return getTournamentService().updateStatus(tournamentId, newStatus);
-}
-
-function apiGetAllSports() {
-  return new BaseRepository('Sport', 'sport_id').getAll();
-}
+function apiCreateTournament(data) { return getTournamentService().createTournament(data); }
+function apiUpdateTournament(tournamentId, data) { return getTournamentService().updateTournament(tournamentId, data); }
+function apiDeleteTournament(tournamentId) { return getTournamentService().deleteTournament(tournamentId); }
+function apiGetTournamentList(filters) { return getTournamentService().getTournamentList(filters); }
+function apiGetTournamentById(tournamentId) { return getTournamentService().getTournamentById(tournamentId); }
+function apiAddSportToTournament(tournamentId, config) { return getTournamentService().addSportToTournament(tournamentId, config); }
+function apiUpdateTournamentStatus(tournamentId, newStatus) { return getTournamentService().updateStatus(tournamentId, newStatus); }
+function apiGetAllSports() { return new BaseRepository('Sport', 'sport_id').getAll(); }
