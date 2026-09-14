@@ -19,11 +19,25 @@ function onEvent(eventName, handler) {
 }
 
 /**
+ * Ensure system event listeners are registered if empty
+ */
+function ensureEventListeners() {
+  if (typeof SYSTEM_EVENTS !== 'undefined' && SYSTEM_EVENTS.MATCH_COMPLETED) {
+    if (!EVENT_REGISTRY[SYSTEM_EVENTS.MATCH_COMPLETED] || EVENT_REGISTRY[SYSTEM_EVENTS.MATCH_COMPLETED].length === 0) {
+      if (typeof initEventListeners === 'function') {
+        initEventListeners();
+      }
+    }
+  }
+}
+
+/**
  * Emit an event synchronously to all registered listeners
  * @param {string} eventName
  * @param {Object} payload
  */
 function emitEvent(eventName, payload) {
+  ensureEventListeners();
   const handlers = EVENT_REGISTRY[eventName] || [];
   handlers.forEach(handler => {
     try {

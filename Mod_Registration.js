@@ -25,7 +25,9 @@ class RegistrationService {
 
     const tournament = this.tournamentRepo.getById(ts.tournament_id);
     if (ts.registration_deadline) {
-      if (new Date() > new Date(ts.registration_deadline)) {
+      const deadlineDate = new Date(ts.registration_deadline);
+      deadlineDate.setHours(23, 59, 59, 999);
+      if (new Date() > deadlineDate) {
         throw new Error('Môn thi đấu này đã hết hạn đăng ký.');
       }
     }
@@ -80,7 +82,7 @@ class RegistrationService {
         if (rules && rules.goalkeeper && rules.goalkeeper.min) {
           const gkCount = playersList.filter(p => p.position === 'goalkeeper').length;
           if (gkCount < rules.goalkeeper.min) {
-            throw new Error(`Đội thi đấu môn ${sport.name} bắt buộc phải có ít nhất ${rules.goalkeeper.min} Thủ môn.`);
+            throw new Error(`Đội thi đấu môn ${sport.name} bắt buộc phải có ít nhất ${rules.goalkeeper.min} Thủ môn (Goalkeeper).`);
           }
         }
       } catch (e) {
@@ -269,7 +271,7 @@ class RegistrationService {
         if (t.players.length > Number(sport.max_players_per_team)) errors.push(`Đội "${t.name}" có ${t.players.length} VĐV (Tối đa ${sport.max_players_per_team}).`);
       }
 
-      if (category.startsWith('mens_') || category === 'mens') {
+        if (category.startsWith('mens_') || category === 'mens') {
         if (t.players.find(p => p.gender && p.gender !== 'male')) errors.push(`Đội "${t.name}": Hạng mục Đôi Nam / Đơn Nam chỉ dành cho Nam.`);
       } else if (category.startsWith('womens_') || category === 'womens') {
         if (t.players.find(p => p.gender && p.gender !== 'female')) errors.push(`Đội "${t.name}": Hạng mục Đôi Nữ / Đơn Nữ chỉ dành cho Nữ.`);
@@ -279,6 +281,26 @@ class RegistrationService {
           const females = t.players.filter(p => p.gender === 'female').length;
           if (males !== 1 || females !== 1) errors.push(`Đội "${t.name}": Hạng mục Đôi Nam Nữ phải gồm đúng 1 Nam và 1 Nữ.`);
         }
+      }
+
+      // 3. Position rules check (goalkeeper)
+      if (sport && sport.position_rules) {
+        try {
+          const rules = typeof sport.position_rules === 'string' ? JSON.parse(sport.position_rules) : sport.position_rules;
+          if (rules && rules.goalkeeper && rules.goalkeeper.min) {
+            const gkCount = t.players.filter(p => p.position === 'goalkeeper').length;
+            if (gkCount < rules.goalkeeper.min) {
+              errors.push(`Đội "${t.name}" thi đấu môn ${sport.name} bắt buộc phải có ít nhất ${rules.goalkeeper.min} Thủ môn (Goalkeeper).`);
+            }
+          }
+        } catch (e) {}
+      }
+
+      // 4. Jersey number unique check
+      const jerseys = t.players.map(p => String(p.jersey_number || '').trim()).filter(j => j !== '');
+      const uniqueJerseys = new Set(jerseys);
+      if (uniqueJerseys.size < jerseys.length) {
+        errors.push(`Đội "${t.name}": Số áo của các thành viên trong đội không được trùng nhau.`);
       }
     });
 

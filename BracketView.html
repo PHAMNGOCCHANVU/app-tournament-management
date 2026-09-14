@@ -92,7 +92,7 @@
         tsSelect.innerHTML = eliminationSports.map(s => `<option value="${s.ts_id}">${s.sport_name}</option>`).join('');
         selectedBracketTsId = eliminationSports[0].ts_id;
         onBracketTsChange();
-        App.livescore.init(selectedBracketTournamentId);
+        App.livescore.init(selectedBracketTournamentId, selectedBracketTsId);
       });
   }
 
@@ -106,6 +106,7 @@
     App.server.call('apiGetMatchesByTournamentSport', selectedBracketTsId)
       .then(matches => {
         renderBracketTree(matches || []);
+        App.livescore.init(selectedBracketTournamentId, selectedBracketTsId);
       })
       .catch(err => {
         container.innerHTML = `<div class="card"><p style="color:var(--danger);">Lỗi dựng nhánh đấu: ${err.message}</p></div>`;

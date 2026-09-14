@@ -221,6 +221,10 @@
                 <input type="number" class="form-control" id="win-pts-${s.sport_id}" value="3">
               </div>
               ${drawInputHtml}
+              <div class="form-group">
+                <label class="form-label">Điểm Thua</label>
+                <input type="number" class="form-control" id="loss-pts-${s.sport_id}" value="0" min="0">
+              </div>
               ${ptsTargetHtml}
             </div>
           </div>
@@ -253,6 +257,7 @@
       const minTeams = document.getElementById(`min-${sportId}`).value;
       const winPts = document.getElementById(`win-pts-${sportId}`).value;
       const drawPts = document.getElementById(`draw-pts-${sportId}`).value;
+      const lossPts = document.getElementById(`loss-pts-${sportId}`) ? document.getElementById(`loss-pts-${sportId}`).value : 0;
       
       // [MODIFY]: Lấy dữ liệu điểm mục tiêu mỗi set
       const ptsTarget = document.getElementById(`pts-target-${sportId}`).value;
@@ -273,7 +278,7 @@
             min_teams: minTeams,
             points_for_win: winPts,
             points_for_draw: drawPts,
-            points_for_loss: 0,
+            points_for_loss: lossPts,
             category: cat,
             skill_level: lvl,
             points_target_per_set: ptsTarget

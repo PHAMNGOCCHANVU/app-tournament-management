@@ -272,18 +272,16 @@
     const t2Score = document.getElementById('score-t2').value;
     const notesText = document.getElementById('match-notes').value;
 
-    let extraData = { text: notesText };
+    let extraData = {};
     
-    // Thu thập điểm các Set
+    // Thu thập điểm các Set (dạng phẳng trực tiếp)
     if (document.getElementById('set1-t1')) {
-      extraData.sets = {
-        set1_a: document.getElementById('set1-t1').value,
-        set1_b: document.getElementById('set1-t2').value,
-        set2_a: document.getElementById('set2-t1').value,
-        set2_b: document.getElementById('set2-t2').value,
-        set3_a: document.getElementById('set3-t1').value,
-        set3_b: document.getElementById('set3-t2').value
-      };
+      extraData.set1_a = document.getElementById('set1-t1').value;
+      extraData.set1_b = document.getElementById('set1-t2').value;
+      extraData.set2_a = document.getElementById('set2-t1').value;
+      extraData.set2_b = document.getElementById('set2-t2').value;
+      extraData.set3_a = document.getElementById('set3-t1').value;
+      extraData.set3_b = document.getElementById('set3-t2').value;
     }
 
     const pbServer = document.getElementById('pb-server');
@@ -293,10 +291,9 @@
       extraData.position = pbPosition.value;
     }
 
-    // Nén extraData vào notes để gửi xuống backend
-    const finalNotes = Object.keys(extraData).length > 1 ? JSON.stringify(extraData) : notesText;
+    const extraPayload = Object.keys(extraData).length > 0 ? extraData : null;
 
-    App.server.call('apiUpdateMatchResult', matchId, t1Score, t2Score, finalNotes)
+    App.server.call('apiUpdateMatchResult', matchId, t1Score, t2Score, notesText, extraPayload)
       .then(res => {
         App.toast.show('Cập nhật tỉ số trận đấu và bảng xếp hạng thành công!', 'success');
         App.router.navigateTo('schedule', { tournamentId: App.state.params.tournamentId || '' });

@@ -47,9 +47,11 @@ class TournamentConfigService {
     this.tournamentRepo.insert(tournament);
     auth.assignRole(tournamentId, userEmail, 'organizer', userEmail);
 
+    tournament.sports = [];
     if (Array.isArray(data.sports) && data.sports.length > 0) {
       data.sports.forEach(sportConfig => {
-        this.addSportToTournament(tournamentId, sportConfig, userEmail);
+        const ts = this.addSportToTournament(tournamentId, sportConfig, userEmail);
+        tournament.sports.push(ts);
       });
     }
 

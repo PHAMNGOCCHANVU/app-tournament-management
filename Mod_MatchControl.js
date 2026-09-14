@@ -102,11 +102,11 @@ function getMatchControlService() {
 
 // Wrapper for backward-compatible getMatchService()
 class MatchServiceCompat {
-  generateFixtures(tsId) {
-    return getBracketEngineService().generateFixtures(tsId);
+  generateFixtures(tsId, drawMode) {
+    return getBracketEngineService().generateFixtures(tsId, drawMode);
   }
-  updateMatchResult(matchId, team1Score, team2Score, notes) {
-    return getMatchControlService().updateMatchResult(matchId, team1Score, team2Score, notes);
+  updateMatchResult(matchId, team1Score, team2Score, notes, extraData) {
+    return getMatchControlService().updateMatchResult(matchId, team1Score, team2Score, notes, extraData);
   }
   advanceBracket(matchId) {
     return getProgressionService().advanceBracket(matchId);
@@ -127,12 +127,15 @@ function getMatchService() {
 /**
  * Server Exposed APIs for Client
  */
-function apiGenerateFixtures(tsId) {
-  return getBracketEngineService().generateFixtures(tsId);
+function apiGenerateFixtures(tsId, drawMode) {
+  return getBracketEngineService().generateFixtures(tsId, drawMode);
 }
 
-function apiUpdateMatchResult(matchId, team1Score, team2Score, notes) {
-  return getMatchControlService().updateMatchResult(matchId, team1Score, team2Score, notes);
+function apiUpdateMatchResult(matchId, team1Score, team2Score, notes, extraData) {
+  if (typeof initEventListeners === 'function') {
+    initEventListeners();
+  }
+  return getMatchControlService().updateMatchResult(matchId, team1Score, team2Score, notes, extraData);
 }
 
 function apiGetMatchesByTournamentSport(tsId) {

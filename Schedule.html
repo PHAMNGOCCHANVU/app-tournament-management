@@ -89,7 +89,7 @@
           }
 
           renderScheduleMatchesList(bundle.matches || []);
-          App.livescore.init(selectedScheduleTournamentId);
+          App.livescore.init(selectedScheduleTournamentId, selectedScheduleTsId);
         } else if (list.length > 0 && !presetTId) {
           // Auto-select first tournament if none specified
           select.value = list[0].tournament_id;
@@ -139,7 +139,7 @@
             selectedScheduleTsId = bundle.tournament.sports[0].ts_id;
           }
           renderScheduleMatchesList(bundle.matches || []);
-          App.livescore.init(selectedScheduleTournamentId);
+          App.livescore.init(selectedScheduleTournamentId, selectedScheduleTsId);
         }
       });
   }
@@ -154,6 +154,7 @@
     App.server.call('apiGetMatchesByTournamentSport', selectedScheduleTsId)
       .then(matches => {
         renderScheduleMatchesList(matches || []);
+        App.livescore.init(selectedScheduleTournamentId, selectedScheduleTsId);
       })
       .catch(err => {
         container.innerHTML = `<div class="card"><p style="color:var(--danger);">Lỗi tải trận đấu: ${err.message}</p></div>`;

@@ -11,13 +11,13 @@ class ScoreEngineService {
   /**
    * Get corresponding score engine based on sport type
    */
-  getEngine(sportType) {
-    const type = String(sportType || '').toUpperCase();
-    if (type.includes('PICKLEBALL')) {
+  getEngine(sportNameOrType) {
+    const type = String(sportNameOrType || '').toUpperCase();
+    if (type.includes('PICKLEBALL') || type.includes('PADDLE')) {
       return Engine_Pickleball;
     } else if (type.includes('FOOTBALL') || type.includes('BÓNG ĐÁ')) {
       return Engine_Football;
-    } else if (type.includes('BADMINTON') || type.includes('CẦU LÔNG') || type.includes('BÓNG BÀN')) {
+    } else if (type.includes('BADMINTON') || type.includes('CẦU LÔNG') || type.includes('BÓNG BÀN') || type.includes('TABLE_TENNIS') || type.includes('RACKET')) {
       return Engine_Badminton;
     }
     return Engine_Football; // default fallback
@@ -27,12 +27,16 @@ class ScoreEngineService {
    * Process score action using Sport Strategy
    */
   processScoreAction(matchId, actionDetails) {
+    if (typeof initEventListeners === 'function') {
+      initEventListeners();
+    }
+
     const match = this.matchRepo.getById(matchId);
     if (!match) throw new Error('Không tìm thấy trận đấu.');
 
     const ts = this.tsRepo.getById(match.ts_id);
     const sport = ts ? this.sportRepo.getById(ts.sport_id) : null;
-    const sportType = sport ? (sport.scoring_type || sport.name) : 'FOOTBALL';
+    const sportType = sport ? (sport.name || sport.type) : 'Football';
 
     const engine = this.getEngine(sportType);
     const scoreResult = engine.calculate(match, actionDetails);
@@ -59,10 +63,29 @@ class ScoreEngineService {
 
     // Save detailed scores to SportScore sheet if extra data is present
     if (scoreResult.extra_data) {
+      let extraObj = {};
+      try {
+        extraObj = typeof scoreResult.extra_data === 'string' ? JSON.parse(scoreResult.extra_data) : scoreResult.extra_data;
+      } catch (e) {}
+
+      if (extraObj && typeof extraObj === 'object') {
+        if (extraObj.sets && typeof extraObj.sets === 'object') {
+          extraObj = Object.assign({}, extraObj.sets, extraObj);
+        }
+      } else {
+        extraObj = {};
+      }
+
       const existingScore = this.scoreRepo.getById(matchId);
       const scoreData = {
         match_id: matchId,
         sport_type: sportType,
+        set1_a: extraObj.set1_a !== undefined ? extraObj.set1_a : '',
+        set1_b: extraObj.set1_b !== undefined ? extraObj.set1_b : '',
+        set2_a: extraObj.set2_a !== undefined ? extraObj.set2_a : '',
+        set2_b: extraObj.set2_b !== undefined ? extraObj.set2_b : '',
+        set3_a: extraObj.set3_a !== undefined ? extraObj.set3_a : '',
+        set3_b: extraObj.set3_b !== undefined ? extraObj.set3_b : '',
         extra_data: typeof scoreResult.extra_data === 'object' ? JSON.stringify(scoreResult.extra_data) : scoreResult.extra_data,
         updated_at: new Date().toISOString()
       };

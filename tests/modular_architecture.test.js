@@ -295,45 +295,78 @@ describe('MODULAR MONOLITH REFACTOR VERIFICATION SUITE', () => {
     });
   });
 
-  describe('Component 6: Firebase LiveSync with Script Properties', () => {
-    test('getFirebaseConfig should read and normalize FIREBASE_URL and FIREBASE_SECRET', () => {
-      const fbConfig = myLib.getFirebaseConfig();
-      expect(fbConfig.DATABASE_URL).toBe('https://test-tournament-livescore.firebaseio.com');
-      expect(fbConfig.SECRET).toBe('my_secret_token_123');
-      expect(fbConfig.ENABLED).toBe(true);
-
-      const publicConfig = myLib.apiGetFirebasePublicConfig();
-      expect(publicConfig.databaseUrl).toBe('https://test-tournament-livescore.firebaseio.com');
-      expect(publicConfig.enabled).toBe(true);
-      expect(publicConfig.SECRET).toBeUndefined();
-    });
-
-    test('syncMatchScore should call UrlFetchApp with normalized url and secret auth param', () => {
-      mockContext.UrlFetchApp.fetch.mockClear();
-
-      myLib.getLiveSyncService().syncMatchScore({
-        tournamentId: 'T001',
-        matchId: 'M001',
-        match: {
-          match_id: 'M001',
-          team1_id: 'TM1',
-          team2_id: 'TM2',
-          team1_score: 3,
-          team2_score: 1,
-          winner_team_id: 'TM1',
-          status: 'ongoing'
-        }
+  describe('Component 6: Pure Google Sheets Match Scoring & State Machine', () => {
+    test('updateMatchResult updates match score and triggers progression calculation', () => {
+      // 1. Create tournament, TS, approved teams and matches
+      const tRepo = new myLib.BaseRepository('Tournament', 'tournament_id');
+      const t = tRepo.insert({
+        tournament_id: 'T_SHEET_01',
+        name: 'Giải Đấu Thuần Google Sheets',
+        organizer_email: 'organizer@test.com',
+        status: 'open'
       });
 
-      expect(mockContext.UrlFetchApp.fetch).toHaveBeenCalledTimes(1);
-      const calledUrl = mockContext.UrlFetchApp.fetch.mock.calls[0][0];
-      expect(calledUrl).toBe('https://test-tournament-livescore.firebaseio.com/tournaments/T001/matches/M001.json?auth=my_secret_token_123');
-      
-      const requestOptions = mockContext.UrlFetchApp.fetch.mock.calls[0][1];
-      expect(requestOptions.method).toBe('put');
-      const sentPayload = JSON.parse(requestOptions.payload);
-      expect(sentPayload.team1_score).toBe(3);
-      expect(sentPayload.winner_team_id).toBe('TM1');
+      const ts = myLib.apiAddSportToTournament(t.tournament_id, {
+        sport_id: 'S001',
+        format: 'round_robin',
+        points_for_win: 3,
+        points_for_draw: 1,
+        points_for_loss: 0,
+        max_teams: 2
+      });
+
+      const t1 = myLib.apiRegisterTeam({
+        ts_id: ts.ts_id,
+        name: 'Team 1',
+        captain_email: 't1@g.com',
+        players: [
+          { name: 'GK1', email: 't1@g.com', position: 'goalkeeper', gender: 'male', jersey_number: '1' },
+          { name: 'P2', email: 'p2@g.com', position: 'forward', gender: 'male', jersey_number: '2' },
+          { name: 'P3', email: 'p3@g.com', position: 'midfielder', gender: 'male', jersey_number: '3' },
+          { name: 'P4', email: 'p4@g.com', position: 'defender', gender: 'male', jersey_number: '4' },
+          { name: 'P5', email: 'p5@g.com', position: 'midfielder', gender: 'male', jersey_number: '5' },
+          { name: 'P6', email: 'p6@g.com', position: 'forward', gender: 'male', jersey_number: '6' },
+          { name: 'P7', email: 'p7@g.com', position: 'forward', gender: 'male', jersey_number: '7' }
+        ]
+      });
+
+      const t2 = myLib.apiRegisterTeam({
+        ts_id: ts.ts_id,
+        name: 'Team 2',
+        captain_email: 't2@g.com',
+        players: [
+          { name: 'GK2', email: 't2@g.com', position: 'goalkeeper', gender: 'male', jersey_number: '1' },
+          { name: 'P2', email: 'p22@g.com', position: 'forward', gender: 'male', jersey_number: '2' },
+          { name: 'P3', email: 'p32@g.com', position: 'midfielder', gender: 'male', jersey_number: '3' },
+          { name: 'P4', email: 'p42@g.com', position: 'defender', gender: 'male', jersey_number: '4' },
+          { name: 'P5', email: 'p52@g.com', position: 'midfielder', gender: 'male', jersey_number: '5' },
+          { name: 'P6', email: 'p62@g.com', position: 'forward', gender: 'male', jersey_number: '6' },
+          { name: 'P7', email: 'p72@g.com', position: 'forward', gender: 'male', jersey_number: '7' }
+        ]
+      });
+
+      myLib.apiApproveTeam(t1.team_id);
+      myLib.apiApproveTeam(t2.team_id);
+
+      myLib.apiGenerateFixtures(ts.ts_id);
+
+      const matchRepo = new myLib.BaseRepository('Match', 'match_id');
+      const matches = matchRepo.where('ts_id', ts.ts_id);
+      expect(matches.length).toBeGreaterThan(0);
+
+      const m = matches[0];
+      const updated = myLib.apiUpdateMatchResult(m.match_id, 3, 1, 'Match completed');
+      expect(updated.status).toBe('completed');
+      expect(updated.team1_score).toBe(3);
+      expect(updated.team2_score).toBe(1);
+
+      // Verify Google Sheets standings were automatically updated via EventBus
+      const rankings = myLib.apiGetRankingsByTournamentSport(ts.ts_id);
+      expect(rankings.length).toBe(2);
+      expect(rankings[0].team_id).toBe(m.team1_id);
+      expect(Number(rankings[0].points)).toBe(3);
+      expect(Number(rankings[0].goals_for)).toBe(3);
+      expect(Number(rankings[0].goals_against)).toBe(1);
     });
   });
 });

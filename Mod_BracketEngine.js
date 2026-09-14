@@ -3,6 +3,54 @@
  */
 
 /**
+ * Strategy Pattern for Tournament Team Draw (Bốc thăm chia nhánh)
+ */
+class BaseDrawStrategy {
+  apply(teams) {
+    throw new Error('Hàm apply() cần được ghi đè ở class con.');
+  }
+}
+
+// Strategy 1: Full Random — Xáo trộn ngẫu nhiên hoàn toàn (Fisher-Yates)
+class FullRandomDraw extends BaseDrawStrategy {
+  apply(teams) {
+    const arr = [...teams];
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+  }
+}
+
+// Strategy 2: Seeded Draw (Mặc định, khuyến nghị)
+// Đội hạt giống (seed 1, 2...) giữ vị trí cố định theo thứ tự seed, phần còn lại xáo ngẫu nhiên
+class SeededDraw extends BaseDrawStrategy {
+  apply(teams) {
+    const seeded = teams.filter(t => Number(t.seed) > 0).sort((a, b) => Number(a.seed) - Number(b.seed));
+    const unseeded = teams.filter(t => !Number(t.seed));
+    for (let i = unseeded.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [unseeded[i], unseeded[j]] = [unseeded[j], unseeded[i]];
+    }
+    return [...seeded, ...unseeded];
+  }
+}
+
+// Draw Strategy Factory
+class DrawStrategyFactory {
+  static getStrategy(drawMode) {
+    switch (drawMode) {
+      case 'random':
+        return new FullRandomDraw();
+      case 'seeded':
+      default:
+        return new SeededDraw();
+    }
+  }
+}
+
+/**
  * Base Interface for Fixture Generators
  */
 class BaseFixtureGenerator {
@@ -124,8 +172,8 @@ class SingleEliminationGenerator extends BaseFixtureGenerator {
       currentRoundNum++;
     }
 
-    // Sort seeded teams first if seed > 0
-    const sortedTeams = [...teams].sort((a, b) => (Number(a.seed) || 999) - (Number(b.seed) || 999));
+    // Use teams order as arranged by Draw Strategy
+    const sortedTeams = [...teams];
     const seeds = sortedTeams.map(t => t.team_id);
     for (let i = 0; i < numByes; i++) {
       seeds.push('BYE');
@@ -219,7 +267,7 @@ class BracketEngineService {
   get teamRepo() { return new BaseRepository('Team', 'team_id'); }
   get tournamentRepo() { return new BaseRepository('Tournament', 'tournament_id'); }
 
-  generateFixtures(tsId) {
+  generateFixtures(tsId, drawMode = 'seeded') {
     const ts = this.tsRepo.getById(tsId);
     if (!ts) throw new Error('Không tìm thấy thông tin môn thi đấu.');
 
@@ -232,8 +280,11 @@ class BracketEngineService {
 
     this.matchRepo.deleteWhere('ts_id', tsId);
 
+    const drawStrategy = DrawStrategyFactory.getStrategy(drawMode);
+    const orderedTeams = drawStrategy.apply(approvedTeams);
+
     const generator = FixtureGeneratorFactory.getGenerator(ts.format);
-    const matches = generator.generate(tsId, approvedTeams);
+    const matches = generator.generate(tsId, orderedTeams);
 
     // Batch insert for performance
     this.matchRepo.batchInsert(matches);

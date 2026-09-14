@@ -354,116 +354,100 @@
     },
 
     /**
-     * Real-time Livescore Sync Engine (Firebase Realtime Stream + Fallback Polling)
+     * Real-time Livescore Smart Polling Engine (Pure Google Sheets Single Source of Truth)
      */
     livescore: {
       activeTournamentId: null,
-      eventSource: null,
+      activeTsId: null,
       pollingTimer: null,
+      isPaused: false,
+      visibilityBound: false,
+      lastScoresCache: {},
 
-      init: function(tournamentId) {
+      init: function(tournamentId, tsId) {
         if (!tournamentId) return;
-        if (this.activeTournamentId === tournamentId && this.eventSource) return;
+        this.activeTournamentId = tournamentId;
+        if (tsId) this.activeTsId = tsId;
 
         this.stop();
-        this.activeTournamentId = tournamentId;
+        this.startSmartPolling();
 
-        App.server.call('apiGetFirebasePublicConfig')
-          .then(config => {
-            if (config && config.enabled && config.databaseUrl) {
-              this.startFirebaseStream(config.databaseUrl, tournamentId);
+        // Bind Page Visibility API once
+        if (!this.visibilityBound) {
+          this.visibilityBound = true;
+          document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+              this.pause();
             } else {
-              this.startPolling(tournamentId);
+              this.resume();
             }
-          })
-          .catch(() => {
-            this.startPolling(tournamentId);
           });
-      },
-
-      startFirebaseStream: function(dbUrl, tournamentId) {
-        try {
-          const cleanUrl = String(dbUrl).trim().replace(/\/+$/, '');
-          const streamUrl = `${cleanUrl}/tournaments/${tournamentId}/matches.json`;
-
-          if (typeof EventSource !== 'undefined') {
-            this.eventSource = new EventSource(streamUrl);
-            
-            // Firebase sends 'put' and 'patch' SSE events
-            const handleStreamEvent = (e) => {
-              try {
-                const parsed = JSON.parse(e.data);
-                if (parsed) {
-                  // If root matches snapshot
-                  if (parsed.path === '/' && parsed.data) {
-                    this.handleScoreUpdate(parsed.data);
-                  } else if (parsed.data) {
-                    // Single match update (path e.g. "/M001" or "/" with object)
-                    this.handleScoreUpdate(parsed.data);
-                  }
-                }
-              } catch (err) {
-                console.warn('[Livescore] Stream parse error:', err);
-              }
-            };
-
-            this.eventSource.addEventListener('put', handleStreamEvent);
-            this.eventSource.addEventListener('patch', handleStreamEvent);
-            this.eventSource.onerror = () => {
-              console.warn('[Livescore] Firebase SSE connection error. Falling back to active polling.');
-              this.startPolling(tournamentId);
-            };
-          } else {
-            this.startPolling(tournamentId);
-          }
-        } catch (e) {
-          this.startPolling(tournamentId);
         }
       },
 
-      startPolling: function(tournamentId) {
+      startSmartPolling: function() {
         if (this.pollingTimer) clearInterval(this.pollingTimer);
+
+        // Fetch immediately once
+        this.pollOnce();
+
+        // Poll every 6 seconds while viewing Schedule or Bracket
         this.pollingTimer = setInterval(() => {
-          if (App.state.currentPage === 'schedule' && typeof selectedScheduleTsId !== 'undefined' && selectedScheduleTsId) {
-            App.server.call('apiGetMatchesByTournamentSport', selectedScheduleTsId)
-              .then(matches => {
-                if (typeof renderScheduleMatchesList === 'function') {
-                  renderScheduleMatchesList(matches || []);
-                }
-              })
-              .catch(() => {});
-          } else if (App.state.currentPage === 'bracket' && typeof selectedBracketTsId !== 'undefined' && selectedBracketTsId) {
-            App.server.call('apiGetMatchesByTournamentSport', selectedBracketTsId)
-              .then(matches => {
-                if (typeof renderBracketTree === 'function') {
-                  renderBracketTree(matches || []);
-                }
-              })
-              .catch(() => {});
+          if (!this.isPaused) {
+            this.pollOnce();
           }
-        }, 8000);
+        }, 6000);
       },
 
-      handleScoreUpdate: function(data) {
-        if (!data) return;
-        const matches = data.match_id ? [data] : (typeof data === 'object' ? Object.values(data) : []);
+      pollOnce: function() {
+        const isSchedulePage = App.state.currentPage === 'schedule';
+        const isBracketPage = App.state.currentPage === 'bracket';
+
+        if (!isSchedulePage && !isBracketPage) {
+          this.stop();
+          return;
+        }
+
+        const targetTsId = (typeof selectedScheduleTsId !== 'undefined' && selectedScheduleTsId) 
+          ? selectedScheduleTsId 
+          : ((typeof selectedBracketTsId !== 'undefined' && selectedBracketTsId) ? selectedBracketTsId : this.activeTsId);
+
+        if (!targetTsId) return;
+
+        App.server.call('apiGetMatchesByTournamentSport', targetTsId)
+          .then(matches => {
+            if (Array.isArray(matches)) {
+              this.handleScoreUpdate(matches);
+            }
+          })
+          .catch(() => {});
+      },
+
+      handleScoreUpdate: function(matches) {
+        if (!Array.isArray(matches)) return;
 
         matches.forEach(m => {
           if (!m || !m.match_id) return;
 
+          const matchId = m.match_id;
+          const scoreText = `${m.team1_score !== '' ? m.team1_score : 0} - ${m.team2_score !== '' ? m.team2_score : 0}`;
+          const prevScore = this.lastScoresCache[matchId];
+
           // 1. Update Schedule Table Score cell
-          const scoreCells = document.querySelectorAll(`[data-match-score-id="${m.match_id}"]`);
+          const scoreCells = document.querySelectorAll(`[data-match-score-id="${matchId}"]`);
           scoreCells.forEach(cell => {
-            const newScoreText = `${m.team1_score !== '' ? m.team1_score : 0} - ${m.team2_score !== '' ? m.team2_score : 0}`;
-            if (cell.innerText.trim() !== newScoreText) {
-              cell.innerText = newScoreText;
-              cell.classList.add('score-pulse');
-              setTimeout(() => cell.classList.remove('score-pulse'), 1500);
+            if (cell.innerText.trim() !== scoreText) {
+              cell.innerText = scoreText;
+              // Flash pulse only if score actually changed from previous cached score
+              if (prevScore !== undefined && prevScore !== scoreText) {
+                cell.classList.add('score-pulse');
+                setTimeout(() => cell.classList.remove('score-pulse'), 1500);
+              }
             }
           });
 
           // 2. Update Status badge cell
-          const statusBadges = document.querySelectorAll(`[data-match-status-id="${m.match_id}"]`);
+          const statusBadges = document.querySelectorAll(`[data-match-status-id="${matchId}"]`);
           statusBadges.forEach(cell => {
             let badgeHtml = `<span class="badge badge-${m.status}">${m.status}</span>`;
             if (m.status === 'ongoing') {
@@ -472,28 +456,38 @@
               badgeHtml = `<span class="badge badge-waiting_confirmation">⏳ Chờ Ký</span>`;
             } else if (m.status === 'completed') {
               badgeHtml = `<span class="badge badge-completed">✅ Xong</span>`;
+            } else if (m.status === 'scheduled') {
+              badgeHtml = `<span class="badge badge-open">📅 Lịch</span>`;
             }
             cell.innerHTML = badgeHtml;
           });
 
           // 3. Update Bracket Tree node scores
-          const bracketT1 = document.querySelector(`[data-bracket-t1-score="${m.match_id}"]`);
-          const bracketT2 = document.querySelector(`[data-bracket-t2-score="${m.match_id}"]`);
+          const bracketT1 = document.querySelector(`[data-bracket-t1-score="${matchId}"]`);
+          const bracketT2 = document.querySelector(`[data-bracket-t2-score="${matchId}"]`);
           if (bracketT1) bracketT1.innerText = m.team1_score !== undefined ? m.team1_score : '';
           if (bracketT2) bracketT2.innerText = m.team2_score !== undefined ? m.team2_score : '';
+
+          // Cache current score
+          this.lastScoresCache[matchId] = scoreText;
         });
       },
 
+      pause: function() {
+        this.isPaused = true;
+      },
+
+      resume: function() {
+        this.isPaused = false;
+        this.pollOnce();
+      },
+
       stop: function() {
-        if (this.eventSource) {
-          this.eventSource.close();
-          this.eventSource = null;
-        }
         if (this.pollingTimer) {
           clearInterval(this.pollingTimer);
           this.pollingTimer = null;
         }
-        this.activeTournamentId = null;
+        this.isPaused = false;
       }
     }
   };

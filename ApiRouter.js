@@ -14,12 +14,7 @@ function initEventListeners() {
     getProgressionService().handleMatchCompleted(payload);
   });
 
-  // 2. Match Score Updated -> Firebase Livescore
-  onEvent(SYSTEM_EVENTS.MATCH_SCORE_UPDATED, function(payload) {
-    getLiveSyncService().syncMatchScore(payload);
-  });
-
-  // 3. Tournament Completed -> Archiver
+  // 2. Tournament Completed -> Archiver
   onEvent(SYSTEM_EVENTS.TOURNAMENT_COMPLETED, function(payload) {
     getArchiverService().handleTournamentCompleted(payload);
   });

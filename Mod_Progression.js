@@ -111,8 +111,22 @@ class ProgressionService {
       if (isSetBased) {
         const sScore = allSportScores.find(ss => ss.match_id === m.match_id);
         if (sScore) {
-          p1 = (Number(sScore.set1_a) || 0) + (Number(sScore.set2_a) || 0) + (Number(sScore.set3_a) || 0);
-          p2 = (Number(sScore.set1_b) || 0) + (Number(sScore.set2_b) || 0) + (Number(sScore.set3_b) || 0);
+          let sExtra = {};
+          if (sScore.extra_data) {
+            try { sExtra = typeof sScore.extra_data === 'string' ? JSON.parse(sScore.extra_data) : sScore.extra_data; } catch (e) {}
+            if (sExtra && typeof sExtra === 'object' && sExtra.sets) {
+              sExtra = Object.assign({}, sExtra.sets, sExtra);
+            }
+          }
+          const s1a = (sScore.set1_a !== '' && sScore.set1_a !== undefined) ? sScore.set1_a : sExtra.set1_a;
+          const s1b = (sScore.set1_b !== '' && sScore.set1_b !== undefined) ? sScore.set1_b : sExtra.set1_b;
+          const s2a = (sScore.set2_a !== '' && sScore.set2_a !== undefined) ? sScore.set2_a : sExtra.set2_a;
+          const s2b = (sScore.set2_b !== '' && sScore.set2_b !== undefined) ? sScore.set2_b : sExtra.set2_b;
+          const s3a = (sScore.set3_a !== '' && sScore.set3_a !== undefined) ? sScore.set3_a : sExtra.set3_a;
+          const s3b = (sScore.set3_b !== '' && sScore.set3_b !== undefined) ? sScore.set3_b : sExtra.set3_b;
+
+          p1 = (Number(s1a) || 0) + (Number(s2a) || 0) + (Number(s3a) || 0);
+          p2 = (Number(s1b) || 0) + (Number(s2b) || 0) + (Number(s3b) || 0);
         }
       }
 

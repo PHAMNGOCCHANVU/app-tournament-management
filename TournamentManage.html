@@ -192,9 +192,15 @@
           <p><strong>Số đội đã duyệt:</strong> ${approvedCount} / ${currentTs.max_teams} đội (Tối thiểu: ${currentTs.min_teams})</p>
         </div>
         
-        <button class="btn btn-success" onclick="generateFixturesForTs('${tsId}')">
-          ⚡ Sinh Lịch Thi Đấu Tự Động
-        </button>
+        <div style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
+          <select class="form-control" id="draw-mode-${tsId}" style="width:auto; min-width:220px; font-size:0.85rem; padding:0.4rem 0.6rem;">
+            <option value="seeded">🎲 Seeded Draw (Hạt giống cố định)</option>
+            <option value="random">🎲 Full Random (Bốc thăm ngẫu nhiên)</option>
+          </select>
+          <button class="btn btn-success" onclick="generateFixturesForTs('${tsId}')">
+            ⚡ Sinh Lịch Thi Đấu
+          </button>
+        </div>
       </div>
 
       <h4 style="margin-bottom:0.75rem;">Danh Sách Đăng Ký (${teams.length})</h4>
@@ -343,8 +349,11 @@
   }
 
   function generateFixturesForTs(tsId) {
-    App.modal.open('Xác nhận Sinh Lịch Thi Đấu', 'Hệ thống sẽ xóa lịch cũ (nếu có) và sinh lịch thi đấu mới cho môn này. Bạn có chắc chắn không?', () => {
-      App.server.call('apiGenerateFixtures', tsId)
+    const drawModeEl = document.getElementById(`draw-mode-${tsId}`);
+    const drawMode = drawModeEl ? drawModeEl.value : 'seeded';
+    const drawModeText = drawMode === 'random' ? 'Bốc thăm ngẫu nhiên (Full Random)' : 'Theo hạt giống (Seeded Draw)';
+    App.modal.open('Xác nhận Sinh Lịch Thi Đấu', `Hệ thống sẽ bốc thăm [${drawModeText}], xóa lịch cũ (nếu có) và sinh lịch thi đấu mới cho môn này. Bạn có chắc chắn không?`, () => {
+      App.server.call('apiGenerateFixtures', tsId, drawMode)
         .then(() => {
           App.toast.show('Sinh lịch thi đấu thành công và đã gửi thông báo Email!', 'success');
           App.router.navigateTo('schedule', { tournamentId: currentManageTournament.tournament_id });
