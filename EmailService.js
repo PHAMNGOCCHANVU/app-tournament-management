@@ -88,6 +88,50 @@ class EmailService {
       this.sendEmail(email, subject, htmlBody);
     });
   }
+
+  /**
+   * Send Tournament Started Notification to All Approved Captains & Players
+   */
+  sendTournamentStartedNotification(tournamentId) {
+    const tournament = this.tournamentRepo.getById(tournamentId);
+    if (!tournament) return;
+
+    const tsList = this.tsRepo.where('tournament_id', tournamentId);
+    const tsIds = tsList.map(ts => ts.ts_id);
+
+    const allTeams = this.teamRepo.getAll();
+    const approvedTeams = allTeams.filter(t => tsIds.includes(t.ts_id) && t.status === 'approved');
+    const recipientEmails = [...new Set(approvedTeams.map(t => t.captain_email).filter(Boolean))];
+
+    if (recipientEmails.length === 0) return;
+
+    const subject = `[Thông Báo Khởi Tranh] Giải đấu ${tournament.name} chính thức bắt đầu!`;
+    const htmlBody = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e5e7eb; border-radius: 8px;">
+        <div style="background: linear-gradient(135deg, #4f46e5, #06b6d4); padding: 20px; border-radius: 6px; text-align: center; color: white; margin-bottom: 20px;">
+          <h2 style="margin: 0; font-size: 22px;">🚀 Giải Đấu Đã Chính Thức Khởi Tranh!</h2>
+        </div>
+        
+        <p>Kính gửi Ban huấn luyện và các Vận động viên,</p>
+        <p>Ban tổ chức xin trân trọng thông báo giải đấu <strong>${tournament.name}</strong> đã chính thức khởi tranh!</p>
+        
+        <div style="background: #f9fafb; border: 1px solid #e5e7eb; padding: 15px; border-radius: 6px; margin: 15px 0;">
+          <h3 style="margin-top: 0; color: #374151;">📋 Thông Tin Chi Tiết Giải Đấu</h3>
+          <p style="margin: 6px 0;"><strong>Mô tả:</strong> ${tournament.description || 'Giải thi đấu thể thao sôi nổi'}</p>
+          <p style="margin: 6px 0;"><strong>Thời gian bắt đầu:</strong> ${tournament.start_date || 'Theo lịch BTC'}</p>
+          <p style="margin: 6px 0;"><strong>Thời gian kết thúc:</strong> ${tournament.end_date || 'Theo lịch BTC'}</p>
+          <p style="margin: 6px 0;"><strong>Địa điểm tổ chức:</strong> 📍 ${tournament.location || 'Sân chính'}</p>
+        </div>
+
+        <p>Lịch thi đấu chi tiết, bảng xếp hạng và tỉ số trực tiếp các trận đấu đã được cập nhật trực tuyến trên hệ thống.</p>
+        <p style="margin-top: 30px; font-size: 12px; color: #6b7280;">Chúc các đội thi đấu trung thực, fair-play và gặt hái thành tích cao nhất!</p>
+      </div>
+    `;
+
+    recipientEmails.forEach(email => {
+      this.sendEmail(email, subject, htmlBody);
+    });
+  }
 }
 
 // Singleton Helper (global variable for V8 reliability)

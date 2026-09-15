@@ -20,6 +20,7 @@ class AuthService {
   get tournamentRepo() { return new BaseRepository('Tournament', 'tournament_id'); }
   get teamRepo() { return new BaseRepository('Team', 'team_id'); }
   get playerRepo() { return new BaseRepository('Player', 'player_id'); }
+  get auditLogRepo() { return new BaseRepository('AuditLog', 'log_id'); }
 
   /**
    * Get active user email from session
@@ -30,6 +31,73 @@ class AuthService {
       return email ? email.toLowerCase().trim() : '';
     } catch (e) {
       return '';
+    }
+  }
+
+  /**
+   * Lấy email của người deploy/chủ sở hữu script (Tự động giữ quyền Super Admin)
+   */
+  getSystemSuperAdminEmail() {
+    try {
+      if (typeof Session !== 'undefined' && Session.getEffectiveUser) {
+        const effective = Session.getEffectiveUser();
+        if (effective && effective.getEmail()) {
+          return effective.getEmail().toLowerCase().trim();
+        }
+      }
+    } catch (e) {
+      // fallback
+    }
+    return '';
+  }
+
+  /**
+   * Kiểm tra người dùng có quyền Quản trị toàn hệ thống (Super Admin) hay không
+   */
+  isSystemAdmin(userEmail) {
+    const email = (userEmail || this.getCurrentUserEmail()).toLowerCase().trim();
+    if (!email) return false;
+
+    // 1. Tự động cấp quyền Super Admin cho tài khoản triển khai web app
+    const superAdmin = this.getSystemSuperAdminEmail();
+    if (superAdmin && email === superAdmin) return true;
+
+    // 2. Kiểm tra cột system_role trong bảng User
+    const user = this.userRepo.findOne(u => String(u.email).toLowerCase().trim() === email);
+    if (user && user.system_role === 'super_admin') return true;
+
+    return false;
+  }
+
+  /**
+   * Bảo vệ API System Admin, ném lỗi nếu không có quyền
+   */
+  checkSystemAdminAccess() {
+    const email = this.getCurrentUserEmail();
+    if (!this.isSystemAdmin(email)) {
+      this.logAudit('ADMIN_ACCESS_DENIED', 'System', 'ALL', `Email ${email} attempted unauthorized admin access`);
+      throw new Error('Từ chối truy cập: Bạn không có quyền Quản Trị Hệ Thống (Super Admin).');
+    }
+    return email;
+  }
+
+  /**
+   * Ghi log thao tác hệ thống vào bảng AuditLog
+   */
+  logAudit(action, entityType, entityId, details, userEmail) {
+    try {
+      const email = userEmail || this.getCurrentUserEmail() || 'system';
+      this.auditLogRepo.insert({
+        log_id: generateId('LOG'),
+        timestamp: new Date().toISOString(),
+        user_email: email,
+        action: action,
+        entity_type: entityType,
+        entity_id: entityId || '',
+        details: typeof details === 'object' ? JSON.stringify(details) : String(details || '')
+      });
+    } catch (err) {
+      Logger.log('Error logging audit: ' + err.message);
     }
   }
 
@@ -163,8 +231,14 @@ class AuthService {
   /**
    * Kiểm tra quyền thực thi API ở cấp giải đấu theo danh sách role
    */
+  /**
+   * Kiểm tra quyền thực thi API ở cấp giải đấu theo danh sách role (Super Admin bypass)
+   */
   checkPermission(tournamentId, allowedRoles) {
     const email = this.getCurrentUserEmail();
+    if (this.isSystemAdmin(email)) {
+      return { email, role: 'super_admin' };
+    }
     const role = this.getUserRole(tournamentId, email);
 
     if (!allowedRoles.includes(role)) {
@@ -174,10 +248,13 @@ class AuthService {
   }
 
   /**
-   * Kiểm tra quyền thực thi action cụ thể theo PERMISSION_MAP
+   * Kiểm tra quyền thực thi action cụ thể theo PERMISSION_MAP (Super Admin bypass)
    */
   checkAction(tournamentId, actionName) {
     const email = this.getCurrentUserEmail();
+    if (this.isSystemAdmin(email)) {
+      return { email, role: 'super_admin' };
+    }
     const role = this.getUserRole(tournamentId, email);
     const allowedRoles = PERMISSION_MAP[actionName] || ['organizer'];
 
@@ -198,12 +275,20 @@ function getAuthService() {
 }
 
 /**
+ * Global Audit Logging Function
+ */
+function logAudit(action, entityType, entityId, details, userEmail) {
+  return getAuthService().logAudit(action, entityType, entityId, details, userEmail);
+}
+
+/**
  * Server Exposed APIs for Client
  */
 function apiGetAuthContext(tournamentId) {
   const auth = getAuthService();
   const email = auth.getCurrentUserEmail();
   const role = auth.getUserRole(tournamentId, email);
+  const isSysAdmin = auth.isSystemAdmin(email);
   
   if (email) {
     auth.registerUser(email);
@@ -212,7 +297,8 @@ function apiGetAuthContext(tournamentId) {
   return {
     email: email,
     role: role,
-    isLoggedIn: !!email
+    isLoggedIn: !!email,
+    isSystemAdmin: isSysAdmin
   };
 }
 
@@ -220,14 +306,18 @@ function apiAssignRole(tournamentId, targetEmail, role) {
   const auth = getAuthService();
   auth.checkPermission(tournamentId, ['organizer']);
   const currentEmail = auth.getCurrentUserEmail();
-  return auth.assignRole(tournamentId, targetEmail, role, currentEmail);
+  const result = auth.assignRole(tournamentId, targetEmail, role, currentEmail);
+  auth.logAudit('ASSIGN_ROLE', 'TournamentRole', tournamentId, `Assigned role ${role} to ${targetEmail}`, currentEmail);
+  return result;
 }
 
 function apiRevokeRole(tournamentId, targetEmail, role) {
   const auth = getAuthService();
   auth.checkPermission(tournamentId, ['organizer']);
   const currentEmail = auth.getCurrentUserEmail();
-  return auth.revokeRole(tournamentId, targetEmail, role, currentEmail);
+  const result = auth.revokeRole(tournamentId, targetEmail, role, currentEmail);
+  auth.logAudit('REVOKE_ROLE', 'TournamentRole', tournamentId, `Revoked role ${role} from ${targetEmail}`, currentEmail);
+  return result;
 }
 
 function apiGetAssignedRoles(tournamentId) {
@@ -236,4 +326,112 @@ function apiGetAssignedRoles(tournamentId) {
 
 function apiCheckAction(tournamentId, actionName) {
   return getAuthService().checkAction(tournamentId, actionName);
+}
+
+function apiIsSystemAdmin() {
+  const auth = getAuthService();
+  const email = auth.getCurrentUserEmail();
+  return {
+    email: email,
+    isAdmin: auth.isSystemAdmin(email)
+  };
+}
+
+function apiGetAdminDashboardData() {
+  const auth = getAuthService();
+  const adminEmail = auth.checkSystemAdminAccess();
+
+  const tourRepo = new BaseRepository('Tournament', 'tournament_id');
+  const userRepo = new BaseRepository('User', 'user_id');
+  const sportRepo = new BaseRepository('Sport', 'sport_id');
+  const auditRepo = new BaseRepository('AuditLog', 'log_id');
+  const teamRepo = new BaseRepository('Team', 'team_id');
+
+  const allTournaments = tourRepo.getAll();
+  const allUsers = userRepo.getAll();
+  const allSports = sportRepo.getAll();
+  const allTeams = teamRepo.getAll();
+  const allAudits = auditRepo.getAll().sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)).slice(0, 100);
+
+  const kpis = {
+    total_tournaments: allTournaments.length,
+    open_tournaments: allTournaments.filter(t => t.status === 'open').length,
+    in_progress_tournaments: allTournaments.filter(t => t.status === 'in_progress').length,
+    completed_tournaments: allTournaments.filter(t => t.status === 'completed').length,
+    total_users: allUsers.length,
+    total_teams: allTeams.length,
+    total_sports: allSports.length
+  };
+
+  auth.logAudit('VIEW_ADMIN_DASHBOARD', 'System', 'DASHBOARD', 'Truy cập Admin KPI Dashboard', adminEmail);
+
+  return {
+    kpis: kpis,
+    tournaments: allTournaments,
+    users: allUsers,
+    sports: allSports,
+    auditLogs: allAudits
+  };
+}
+
+function apiAdminUpdateUserRole(targetEmail, systemRole) {
+  const auth = getAuthService();
+  const adminEmail = auth.checkSystemAdminAccess();
+  const userRepo = new BaseRepository('User', 'user_id');
+  const cleanEmail = String(targetEmail).toLowerCase().trim();
+
+  const user = userRepo.findOne(u => String(u.email).toLowerCase().trim() === cleanEmail);
+  if (!user) {
+    throw new Error('Không tìm thấy người dùng với email: ' + targetEmail);
+  }
+
+  userRepo.update(user.user_id, { system_role: systemRole });
+  auth.logAudit('UPDATE_USER_SYSTEM_ROLE', 'User', user.user_id, `Cập nhật vai trò hệ thống của ${cleanEmail} thành ${systemRole}`, adminEmail);
+  return { success: true, message: `Đã cập nhật vai trò ${systemRole} cho ${cleanEmail}` };
+}
+
+function apiAdminAddSport(sportData) {
+  const auth = getAuthService();
+  const adminEmail = auth.checkSystemAdminAccess();
+  const sportRepo = new BaseRepository('Sport', 'sport_id');
+
+  const newSport = {
+    sport_id: sportData.sport_id || generateId('S'),
+    name: sportData.name,
+    type: sportData.type || 'team',
+    scoring_type: sportData.scoring_type || 'goals',
+    min_players: Number(sportData.min_players) || 1,
+    max_players: Number(sportData.max_players) || 1,
+    has_skill_level: sportData.has_skill_level ? true : false,
+    categories: Array.isArray(sportData.categories) ? JSON.stringify(sportData.categories) : (sportData.categories || '[]'),
+    default_levels: Array.isArray(sportData.default_levels) ? JSON.stringify(sportData.default_levels) : (sportData.default_levels || '[]'),
+    is_active: sportData.is_active !== false
+  };
+
+  sportRepo.insert(newSport);
+  auth.logAudit('ADD_SPORT', 'Sport', newSport.sport_id, `Thêm môn thể thao mới: ${newSport.name}`, adminEmail);
+  return newSport;
+}
+
+function apiAdminUpdateSport(sportId, sportData) {
+  const auth = getAuthService();
+  const adminEmail = auth.checkSystemAdminAccess();
+  const sportRepo = new BaseRepository('Sport', 'sport_id');
+
+  const updated = sportRepo.update(sportId, sportData);
+  auth.logAudit('UPDATE_SPORT', 'Sport', sportId, `Cập nhật môn ${sportId}`, adminEmail);
+  return updated;
+}
+
+function apiAdminDeleteTournament(tournamentId) {
+  const auth = getAuthService();
+  const adminEmail = auth.checkSystemAdminAccess();
+  const tourRepo = new BaseRepository('Tournament', 'tournament_id');
+
+  const t = tourRepo.getById(tournamentId);
+  if (!t) throw new Error('Không tìm thấy giải đấu: ' + tournamentId);
+
+  tourRepo.delete(tournamentId);
+  auth.logAudit('ADMIN_DELETE_TOURNAMENT', 'Tournament', tournamentId, `Xóa giải đấu: ${t.name}`, adminEmail);
+  return { success: true, message: `Đã xóa thành công giải đấu ${t.name}` };
 }

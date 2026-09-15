@@ -101,6 +101,12 @@ class RegistrationService {
     const roleInTournament = auth.getUserRole(ts.tournament_id, userEmail);
     const initialStatus = (roleInTournament === 'organizer') ? TEAM_STATUS.APPROVED : TEAM_STATUS.PENDING;
 
+    const isPaidTournament = tournament && (tournament.fee_type === 'paid' || Number(tournament.entry_fee) > 0);
+    let paymentStatus = isPaidTournament ? (data.payment_status || 'unpaid') : 'free';
+    if (isPaidTournament && !data.payment_proof && !data.bypassPayment) {
+      throw new Error('Vui lòng đính kèm ảnh biên lai/chuyển khoản thanh toán phí tham gia.');
+    }
+
     const newTeam = {
       team_id: teamId,
       ts_id: data.ts_id,
@@ -109,7 +115,10 @@ class RegistrationService {
       registration_date: new Date().toISOString(),
       status: initialStatus,
       group_name: data.group_name || '',
-      seed: Number(data.seed) || 0
+      seed: Number(data.seed) || 0,
+      payment_status: paymentStatus,
+      payment_proof: data.payment_proof || '',
+      athlete_level: data.athlete_level || ''
     };
 
     this.teamRepo.insert(newTeam);
@@ -366,6 +375,25 @@ class RegistrationService {
       });
     });
   }
+
+  /**
+   * Update Payment Status of a Team (Organizer only)
+   */
+  updatePaymentStatus(teamId, status) {
+    const team = this.teamRepo.getById(teamId);
+    if (!team) throw new Error('Không tìm thấy thông tin đội.');
+    const ts = this.tsRepo.getById(team.ts_id);
+    getAuthService().checkPermission(ts.tournament_id, ['organizer']);
+
+    const validStatuses = ['free', 'unpaid', 'paid'];
+    if (!validStatuses.includes(status)) throw new Error('Trạng thái thanh toán không hợp lệ: ' + status);
+
+    const updated = this.teamRepo.update(teamId, { payment_status: status });
+    if (typeof logAudit === 'function') {
+      logAudit('UPDATE_PAYMENT_STATUS', 'Team', teamId, `Cập nhật trạng thái thanh toán đội ${team.name}: ${status}`);
+    }
+    return updated;
+  }
 }
 
 let _teamServiceInstance = null;
@@ -378,6 +406,7 @@ function apiRegisterTeam(data) { return getTeamService().registerTeam(data); }
 function apiApproveTeam(teamId) { return getTeamService().approveTeam(teamId); }
 function apiRejectTeam(teamId) { return getTeamService().rejectTeam(teamId); }
 function apiWithdrawTeam(teamId) { return getTeamService().withdrawTeam(teamId); }
+function apiUpdateTeamPaymentStatus(teamId, status) { return getTeamService().updatePaymentStatus(teamId, status); }
 function apiGetMyRegisteredTeams() { return getTeamService().getMyRegisteredTeams(); }
 function apiGetTeamsByTournamentSport(tsId) { return getTeamService().getTeamsByTournamentSport(tsId); }
 function apiGetTeamById(teamId) { return getTeamService().getTeamById(teamId); }

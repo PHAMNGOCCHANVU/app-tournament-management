@@ -84,6 +84,9 @@ const mockContext = {
   Session: {
     getActiveUser: () => ({
       getEmail: () => mockContext.currentUserEmail
+    }),
+    getEffectiveUser: () => ({
+      getEmail: () => mockContext.effectiveUserEmail || 'admin@test.com'
     })
   },
   SpreadsheetApp: {
@@ -92,7 +95,8 @@ const mockContext = {
   GmailApp: {
     sendEmail: jest.fn()
   },
-  currentUserEmail: 'organizer@test.com'
+  currentUserEmail: 'organizer@test.com',
+  effectiveUserEmail: 'admin@test.com'
 };
 
 // Load code files with filter to only load root js files
@@ -109,7 +113,7 @@ const myLib = gas.require(absoluteWorkspaceDir, mockContext, {
 // All global services (getAuthService, getTeamService, etc.) are automatically defined in the shared VM context by gas-local during loading.
 // Because ES6 'class', 'const', and 'let' declarations do not attach to the global 'this' in a VM context, we expose them manually.
 const vm = require('vm');
-vm.runInContext('this.BaseRepository = BaseRepository; this.SCHEMAS = SCHEMAS; this.CACHE_STORE = CACHE_STORE; this.SeededDraw = SeededDraw; this.FullRandomDraw = FullRandomDraw;', myLib);
+vm.runInContext('this.BaseRepository = BaseRepository; this.SCHEMAS = SCHEMAS; this.CACHE_STORE = CACHE_STORE; this.SeededDraw = SeededDraw; this.FullRandomDraw = FullRandomDraw; this.STANDARD_ATHLETE_LEVELS = STANDARD_ATHLETE_LEVELS; this.LEVEL_GROUPS = LEVEL_GROUPS;', myLib);
 
 describe('SPORT TOURNAMENT V3 TEST PLAN EXECUTION SUITE', () => {
   let tsIdFootball, tsIdMensDoubles, tsIdMixedDoubles;
@@ -764,6 +768,137 @@ describe('SPORT TOURNAMENT V3 TEST PLAN EXECUTION SUITE', () => {
       expect(teamIds).toContain('TM2');
       expect(teamIds).toContain('TM3');
       expect(teamIds).toContain('TM4');
+    });
+  });
+
+  describe('Features V4 Implementation Verification', () => {
+    test('V4-1: Standardized 11-step athlete levels (1.0 to 6.0) and divisions', () => {
+      expect(myLib.STANDARD_ATHLETE_LEVELS).toEqual([
+        '1.0', '1.5', '2.0', '2.5', '3.0', '3.5', '4.0', '4.5', '5.0', '5.5', '6.0'
+      ]);
+      expect(myLib.STANDARD_ATHLETE_LEVELS.length).toBe(11);
+
+      const sportRepo = new myLib.BaseRepository('Sport', 'sport_id');
+      const sports = sportRepo.getAll();
+
+      // Badminton S003, Table Tennis S004, Pickleball S005
+      ['S003', 'S004', 'S005'].forEach(sportId => {
+        const sp = sports.find(s => s.sport_id === sportId);
+        expect(sp).toBeDefined();
+        const levels = JSON.parse(sp.default_levels);
+        expect(levels).toEqual(myLib.STANDARD_ATHLETE_LEVELS);
+      });
+    });
+
+    test('V4-2: Tournament Payment Workflow & QR configuration', () => {
+      // 1. Create a paid tournament
+      const paidTournament = myLib.apiCreateTournament({
+        name: 'V4 Cup Paid 2026',
+        organizer_email: 'organizer@test.com',
+        start_date: '2026-10-01',
+        end_date: '2026-10-05',
+        location: 'Ha Noi Stadium',
+        fee_type: 'paid',
+        entry_fee: 250000,
+        bank_info: 'Vietcombank 123456789 - NGUYEN VAN A',
+        qr_code_url: 'data:image/png;base64,mockqrdata',
+        sports: [{
+          sport_id: 'S003',
+          format: 'single_elimination',
+          max_teams: 4,
+          min_teams: 2
+        }]
+      });
+
+      expect(paidTournament.tournament_id).toBeDefined();
+      expect(paidTournament.fee_type).toBe('paid');
+      expect(Number(paidTournament.entry_fee)).toBe(250000);
+      expect(paidTournament.bank_info).toContain('Vietcombank');
+      expect(paidTournament.qr_code_url).toContain('mockqrdata');
+
+      // 2. Update payment config
+      myLib.apiUpdateTournamentPaymentConfig(paidTournament.tournament_id, {
+        fee_type: 'paid',
+        entry_fee: 300000,
+        bank_info: 'MB Bank 987654321 - NGUYEN VAN A',
+        qr_code_url: 'data:image/png;base64,updatedqr'
+      });
+
+      const updatedTour = myLib.apiGetTournamentById(paidTournament.tournament_id);
+      expect(Number(updatedTour.entry_fee)).toBe(300000);
+      expect(updatedTour.bank_info).toContain('MB Bank');
+
+      // 3. Register team with athlete_level and payment_proof
+      const tsId = updatedTour.sports[0].ts_id;
+      const team = myLib.apiRegisterTeam({
+        ts_id: tsId,
+        name: 'Team Fee Paid',
+        captain_email: 'fee.captain@gmail.com',
+        athlete_level: '3.5',
+        payment_proof: 'data:image/png;base64,receiptbillimage',
+        players: [{ name: 'Player 1', email: 'fee.captain@gmail.com' }]
+      });
+
+      expect(team.team_id).toBeDefined();
+      expect(team.athlete_level).toBe('3.5');
+      expect(team.payment_status).toBe('unpaid');
+      expect(team.payment_proof).toContain('receiptbillimage');
+
+      // 4. Organizer verifies and confirms payment
+      myLib.apiUpdateTeamPaymentStatus(team.team_id, 'paid');
+      const teamRepo = new myLib.BaseRepository('Team', 'team_id');
+      const confirmedTeam = teamRepo.getById(team.team_id);
+      expect(confirmedTeam.payment_status).toBe('paid');
+    });
+
+    test('V4-3: Automated Email notification when Tournament starts (in_progress)', () => {
+      mockContext.GmailApp.sendEmail.mockClear();
+
+      // Start tournament T001
+      myLib.apiUpdateTournamentStatus(tournamentId, 'in_progress');
+
+      const tour = myLib.apiGetTournamentById(tournamentId);
+      expect(tour.status).toBe('in_progress');
+      expect(mockContext.GmailApp.sendEmail).toHaveBeenCalled();
+    });
+
+    test('V4-4: System Admin RBAC, Audit Log and Super Admin Dashboard', () => {
+      // 1. Effective user is recognized as System Admin
+      mockContext.currentUserEmail = 'admin@test.com';
+      const adminInfo = myLib.apiIsSystemAdmin();
+      expect(adminInfo.isAdmin).toBe(true);
+
+      // 2. Super admin gets admin dashboard data
+      const adminData = myLib.apiGetAdminDashboardData();
+      expect(adminData.kpis).toBeDefined();
+      expect(adminData.kpis.total_tournaments).toBeGreaterThan(0);
+      expect(adminData.sports.length).toBeGreaterThan(0);
+      expect(adminData.auditLogs).toBeDefined();
+
+      // 3. Regular user is denied admin access
+      mockContext.currentUserEmail = 'regular_user@test.com';
+      expect(() => myLib.apiGetAdminDashboardData()).toThrow(/Từ chối truy cập/);
+
+      // 4. Update user role (switch back to admin)
+      mockContext.currentUserEmail = 'admin@test.com';
+      const userRepo = new myLib.BaseRepository('User', 'user_id');
+      const testUser = {
+        user_id: 'U_TEST',
+        email: 'user_target@test.com',
+        display_name: 'Target User',
+        created_at: new Date().toISOString()
+      };
+      userRepo.insert(testUser);
+
+      myLib.apiAdminUpdateUserRole('user_target@test.com', 'organizer');
+      const updatedUser = userRepo.findOne(u => u.email === 'user_target@test.com');
+      expect(updatedUser.system_role).toBe('organizer');
+
+      // 5. Audit Log has recorded entries
+      const auditRepo = new myLib.BaseRepository('AuditLog', 'log_id');
+      const allLogs = auditRepo.getAll();
+      expect(allLogs.length).toBeGreaterThan(0);
+      expect(allLogs.some(l => l.action === 'UPDATE_USER_SYSTEM_ROLE')).toBe(true);
     });
   });
 });

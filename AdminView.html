@@ -1,0 +1,434 @@
+<script>
+  /**
+   * System Admin Panel View Controller
+   * Multi-module control room for Super Admin
+   */
+  App.views.admin_view = function (params = {}) {
+    const container = document.getElementById('app-view');
+    
+    container.innerHTML = `
+      <div id="admin-view-wrapper" style="max-width: 1200px; margin: 0 auto;">
+        <div class="loader-center"><div class="spinner"></div><p>Đang kiểm tra quyền và tải dữ liệu Quản trị...</p></div>
+      </div>
+    `;
+
+    loadAdminDashboardData();
+  };
+
+  let adminDataCache = null;
+  let currentAdminTab = 'kpi';
+
+  function loadAdminDashboardData() {
+    App.server.call('apiGetAdminDashboardData')
+      .then(data => {
+        adminDataCache = data;
+        renderAdminPanel();
+      })
+      .catch(err => {
+        const wrapper = document.getElementById('admin-view-wrapper');
+        if (wrapper) {
+          wrapper.innerHTML = `
+            <div class="card" style="text-align:center; padding:3rem; max-width:600px; margin:2rem auto; border:1px solid var(--danger); background:rgba(239,68,68,0.05);">
+              <div style="font-size:3.5rem; margin-bottom:1rem;">🚫</div>
+              <h2 style="color:var(--danger); margin-bottom:0.75rem;">Từ Chối Truy Cập</h2>
+              <p style="color:var(--text-muted); font-size:1rem; margin-bottom:1.5rem;">
+                ${err.message || 'Bạn không có quyền Quản Trị Hệ Thống (Super Admin). Vui lòng liên hệ người triển khai hệ thống.'}
+              </p>
+              <button class="btn btn-primary" onclick="App.router.navigateTo('dashboard')">🏠 Về Trang Chủ</button>
+            </div>
+          `;
+        }
+      });
+  }
+
+  function switchAdminTab(tabName) {
+    currentAdminTab = tabName;
+    document.querySelectorAll('.admin-tab-btn').forEach(btn => {
+      if (btn.dataset.tab === tabName) {
+        btn.classList.add('btn-primary');
+        btn.classList.remove('btn-secondary');
+      } else {
+        btn.classList.add('btn-secondary');
+        btn.classList.remove('btn-primary');
+      }
+    });
+
+    const contentEl = document.getElementById('admin-tab-content');
+    if (!contentEl || !adminDataCache) return;
+
+    if (tabName === 'kpi') renderAdminKpiTab(contentEl);
+    else if (tabName === 'sports') renderAdminSportsTab(contentEl);
+    else if (tabName === 'tournaments') renderAdminTournamentsTab(contentEl);
+    else if (tabName === 'users') renderAdminUsersTab(contentEl);
+    else if (tabName === 'audit') renderAdminAuditTab(contentEl);
+  }
+
+  function renderAdminPanel() {
+    const wrapper = document.getElementById('admin-view-wrapper');
+    if (!wrapper || !adminDataCache) return;
+
+    wrapper.innerHTML = `
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5rem; flex-wrap:wrap; gap:1rem;">
+        <div>
+          <h2 style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.25rem;">
+            🛡️ Bảng Điều Khiển Quản Trị Hệ Thống
+            <span class="badge badge-success" style="font-size:0.75rem;">Super Admin</span>
+          </h2>
+          <p style="color:var(--text-muted); font-size:0.9rem;">Toàn quyền quản lý Danh mục Môn, Giải đấu, Người dùng và Nhật ký hệ thống.</p>
+        </div>
+        <button class="btn btn-secondary btn-sm" onclick="loadAdminDashboardData()">🔄 Làm mới dữ liệu</button>
+      </div>
+
+      <!-- Navigation Tabs -->
+      <div style="display:flex; gap:0.5rem; overflow-x:auto; margin-bottom:1.5rem; padding-bottom:0.25rem;">
+        <button class="btn btn-sm ${currentAdminTab === 'kpi' ? 'btn-primary' : 'btn-secondary'} admin-tab-btn" data-tab="kpi" onclick="switchAdminTab('kpi')">📊 Tổng Quan KPI</button>
+        <button class="btn btn-sm ${currentAdminTab === 'sports' ? 'btn-primary' : 'btn-secondary'} admin-tab-btn" data-tab="sports" onclick="switchAdminTab('sports')">🏸 Quản Lý Môn Thi Đấu</button>
+        <button class="btn btn-sm ${currentAdminTab === 'tournaments' ? 'btn-primary' : 'btn-secondary'} admin-tab-btn" data-tab="tournaments" onclick="switchAdminTab('tournaments')">🏆 Quản Lý Mọi Giải Đấu</button>
+        <button class="btn btn-sm ${currentAdminTab === 'users' ? 'btn-primary' : 'btn-secondary'} admin-tab-btn" data-tab="users" onclick="switchAdminTab('users')">👥 Phân Quyền Người Dùng</button>
+        <button class="btn btn-sm ${currentAdminTab === 'audit' ? 'btn-primary' : 'btn-secondary'} admin-tab-btn" data-tab="audit" onclick="switchAdminTab('audit')">📜 Nhật Ký Hoạt Động (Audit)</button>
+      </div>
+
+      <!-- Tab Content Area -->
+      <div id="admin-tab-content"></div>
+    `;
+
+    switchAdminTab(currentAdminTab);
+  }
+
+  // --- TAB 1: KPI OVERVIEW ---
+  function renderAdminKpiTab(container) {
+    const kpi = adminDataCache.kpis || {};
+    container.innerHTML = `
+      <div class="grid-4" style="gap:1rem; margin-bottom:1.5rem;">
+        <div class="card" style="text-align:center; padding:1.25rem; background:rgba(99,102,241,0.1); border-color:var(--primary);">
+          <div style="font-size:2rem; font-weight:bold; color:var(--primary);">${kpi.total_tournaments || 0}</div>
+          <div style="color:var(--text-muted); font-size:0.85rem; margin-top:0.25rem;">Tổng số Giải Đấu</div>
+        </div>
+        <div class="card" style="text-align:center; padding:1.25rem; background:rgba(34,197,94,0.1); border-color:var(--success);">
+          <div style="font-size:2rem; font-weight:bold; color:var(--success);">${kpi.in_progress_tournaments || 0}</div>
+          <div style="color:var(--text-muted); font-size:0.85rem; margin-top:0.25rem;">Giải Đang Thi Đấu</div>
+        </div>
+        <div class="card" style="text-align:center; padding:1.25rem; background:rgba(245,158,11,0.1); border-color:var(--warning);">
+          <div style="font-size:2rem; font-weight:bold; color:var(--warning);">${kpi.total_teams || 0}</div>
+          <div style="color:var(--text-muted); font-size:0.85rem; margin-top:0.25rem;">Tổng Số Đội / VĐV</div>
+        </div>
+        <div class="card" style="text-align:center; padding:1.25rem; background:rgba(168,85,247,0.1); border-color:var(--accent);">
+          <div style="font-size:2rem; font-weight:bold; color:var(--accent);">${kpi.total_users || 0}</div>
+          <div style="color:var(--text-muted); font-size:0.85rem; margin-top:0.25rem;">Tài Khoản Người Dùng</div>
+        </div>
+      </div>
+
+      <div class="grid-2" style="gap:1.5rem;">
+        <div class="card">
+          <h3 style="color:var(--primary); margin-bottom:1rem;">Trạng Thái Giải Đấu</h3>
+          <div style="display:flex; flex-direction:column; gap:0.75rem;">
+            <div style="display:flex; justify-content:space-between; padding:0.5rem; background:rgba(255,255,255,0.03); border-radius:4px;">
+              <span>Đang mở đăng ký (Open):</span>
+              <strong style="color:var(--secondary);">${kpi.open_tournaments || 0} giải</strong>
+            </div>
+            <div style="display:flex; justify-content:space-between; padding:0.5rem; background:rgba(255,255,255,0.03); border-radius:4px;">
+              <span>Đang thi đấu (In Progress):</span>
+              <strong style="color:var(--success);">${kpi.in_progress_tournaments || 0} giải</strong>
+            </div>
+            <div style="display:flex; justify-content:space-between; padding:0.5rem; background:rgba(255,255,255,0.03); border-radius:4px;">
+              <span>Đã kết thúc (Completed):</span>
+              <strong style="color:var(--text-muted);">${kpi.completed_tournaments || 0} giải</strong>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3 style="color:var(--secondary); margin-bottom:1rem;">Hệ Thống Môn Thể Thao</h3>
+          <p style="color:var(--text-muted); font-size:0.9rem; margin-bottom:1rem;">
+            Đang hỗ trợ <strong>${kpi.total_sports || 0} môn thể thao</strong> với các thể thức: Goals, Sets, Points.
+          </p>
+          <div style="display:flex; gap:0.75rem; flex-wrap:wrap;">
+            <button class="btn btn-primary btn-sm" onclick="switchAdminTab('sports')">🏸 Cấu hình Môn</button>
+            <button class="btn btn-secondary btn-sm" onclick="switchAdminTab('tournaments')">🏆 Quản lý Giải đấu</button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  // --- TAB 2: SPORTS MANAGEMENT ---
+  function renderAdminSportsTab(container) {
+    const sports = adminDataCache.sports || [];
+    container.innerHTML = `
+      <div class="card">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem; flex-wrap:wrap; gap:0.5rem;">
+          <h3 style="color:var(--primary); margin:0;">Danh Sách Môn Thể Thao Hệ Thống</h3>
+          <button class="btn btn-success btn-sm" onclick="openAdminAddSportModal()">➕ Thêm Môn Mới</button>
+        </div>
+
+        <div class="table-container">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Mã Môn</th>
+                <th>Tên Môn</th>
+                <th>Loại Hình</th>
+                <th>Cách Tính Điểm</th>
+                <th>Số Người/Đội</th>
+                <th>Phân Cấp Trình Độ</th>
+                <th>Trạng Thái</th>
+                <th style="text-align:right;">Thao Tác</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${sports.map(s => `
+                <tr>
+                  <td><code>${s.sport_id}</code></td>
+                  <td><strong>${s.name}</strong></td>
+                  <td><span class="badge badge-open">${s.type}</span></td>
+                  <td>${s.scoring_type}</td>
+                  <td>${s.min_players} - ${s.max_players} người</td>
+                  <td>${s.has_skill_level ? '<span style="color:var(--success);">✓ Có (1.0 - 6.0)</span>' : '<span style="color:var(--text-dim);">Không</span>'}</td>
+                  <td>
+                    <span class="badge ${s.is_active !== false ? 'badge-success' : 'badge-draft'}">
+                      ${s.is_active !== false ? 'Đang bật' : 'Tạm tắt'}
+                    </span>
+                  </td>
+                  <td style="text-align:right;">
+                    <button class="btn btn-sm ${s.is_active !== false ? 'btn-secondary' : 'btn-success'}" style="padding:2px 8px; font-size:0.8rem;" onclick="adminToggleSportActive('${s.sport_id}', ${s.is_active !== false ? false : true})">
+                      ${s.is_active !== false ? 'Tắt' : 'Bật'}
+                    </button>
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+  }
+
+  function adminToggleSportActive(sportId, newStatus) {
+    App.server.call('apiAdminUpdateSport', sportId, { is_active: newStatus })
+      .then(() => {
+        App.toast.show('Đã cập nhật trạng thái môn thành công!', 'success');
+        loadAdminDashboardData();
+      })
+      .catch(err => App.toast.show('Lỗi: ' + err.message, 'error'));
+  }
+
+  function openAdminAddSportModal() {
+    const modalHtml = `
+      <form id="admin-add-sport-form" onsubmit="handleAdminAddSportSubmit(event)">
+        <div class="form-group" style="margin-bottom:0.75rem;">
+          <label class="form-label">Tên Môn Thể Thao *</label>
+          <input type="text" class="form-control" id="asp-name" required placeholder="Ví dụ: Cầu Mây, Bi-a">
+        </div>
+        <div class="grid-2" style="gap:0.75rem; margin-bottom:0.75rem;">
+          <div class="form-group">
+            <label class="form-label">Loại hình</label>
+            <select class="form-control" id="asp-type">
+              <option value="team">Đồng đội (Team)</option>
+              <option value="doubles">Đôi (Doubles)</option>
+              <option value="individual">Đơn / Cá nhân (Individual)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Tính điểm</label>
+            <select class="form-control" id="asp-scoring">
+              <option value="goals">Bàn thắng (Goals)</option>
+              <option value="sets">Theo Set (Sets)</option>
+              <option value="points">Điểm số (Points)</option>
+            </select>
+          </div>
+        </div>
+        <div class="grid-2" style="gap:0.75rem; margin-bottom:0.75rem;">
+          <div class="form-group">
+            <label class="form-label">Số VĐV tối thiểu / Đội</label>
+            <input type="number" class="form-control" id="asp-min-p" value="1" min="1">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Số VĐV tối đa / Đội</label>
+            <input type="number" class="form-control" id="asp-max-p" value="2" min="1">
+          </div>
+        </div>
+        <div class="form-group" style="margin-bottom:1rem;">
+          <label style="display:inline-flex; align-items:center; gap:0.5rem; cursor:pointer;">
+            <input type="checkbox" id="asp-has-levels" checked style="width:16px; height:16px;">
+            <span>Áp dụng thang điểm trình độ chuẩn 1.0 - 6.0</span>
+          </label>
+        </div>
+        <div style="display:flex; justify-content:flex-end; gap:0.75rem;">
+          <button type="submit" class="btn btn-primary btn-sm">💾 Lưu Môn Mới</button>
+        </div>
+      </form>
+    `;
+
+    App.modal.open('➕ Thêm Môn Thể Thao Mới', modalHtml, null, 'Đóng');
+  }
+
+  function handleAdminAddSportSubmit(event) {
+    event.preventDefault();
+    const hasLevels = document.getElementById('asp-has-levels').checked;
+    const sportData = {
+      name: document.getElementById('asp-name').value.trim(),
+      type: document.getElementById('asp-type').value,
+      scoring_type: document.getElementById('asp-scoring').value,
+      min_players: document.getElementById('asp-min-p').value,
+      max_players: document.getElementById('asp-max-p').value,
+      has_skill_level: hasLevels,
+      default_levels: hasLevels ? ['1.0', '1.5', '2.0', '2.5', '3.0', '3.5', '4.0', '4.5', '5.0', '5.5', '6.0'] : []
+    };
+
+    App.server.call('apiAdminAddSport', sportData)
+      .then(() => {
+        App.toast.show('Thêm môn thể thao thành công!', 'success');
+        App.modal.close();
+        loadAdminDashboardData();
+      })
+      .catch(err => App.toast.show('Lỗi: ' + err.message, 'error'));
+  }
+
+  // --- TAB 3: TOURNAMENTS MANAGEMENT ---
+  function renderAdminTournamentsTab(container) {
+    const tours = adminDataCache.tournaments || [];
+    container.innerHTML = `
+      <div class="card">
+        <h3 style="color:var(--primary); margin-bottom:1rem;">Quản Lý Toàn Bộ Giải Đấu (${tours.length} giải)</h3>
+        
+        <div class="table-container">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Tên Giải Đấu</th>
+                <th>Người Tạo (Organizer)</th>
+                <th>Địa Điểm</th>
+                <th>Bắt Đầu</th>
+                <th>Trạng Thái</th>
+                <th style="text-align:right;">Thao Tác</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${tours.map(t => `
+                <tr>
+                  <td><code>${t.tournament_id}</code></td>
+                  <td><strong>${t.name}</strong></td>
+                  <td>${t.organizer_email}</td>
+                  <td>${t.location}</td>
+                  <td>${formatDate(t.start_date)}</td>
+                  <td><span class="badge badge-${t.status}">${t.status}</span></td>
+                  <td style="text-align:right; white-space:nowrap;">
+                    <button class="btn btn-sm btn-secondary" style="padding:2px 6px; font-size:0.75rem;" onclick="App.router.navigateTo('tournament_manage', { tournamentId: '${t.tournament_id}' })">⚙️ Vào Quản Lý</button>
+                    <button class="btn btn-sm btn-danger" style="padding:2px 6px; font-size:0.75rem;" onclick="adminDeleteTournament('${t.tournament_id}', '${encodeURIComponent(t.name)}')">🗑️ Xóa</button>
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+  }
+
+  function adminDeleteTournament(tournamentId, encodedName) {
+    const name = decodeURIComponent(encodedName);
+    App.modal.open('Xóa Giải Đấu (Admin Bypass)', `Bạn có chắc chắn muốn xóa vĩnh viễn giải đấu <strong>${name}</strong>? Thao tác này không thể hoàn tác.`, () => {
+      App.server.call('apiAdminDeleteTournament', tournamentId)
+        .then(res => {
+          App.toast.show(res.message || 'Đã xóa giải đấu!', 'success');
+          loadAdminDashboardData();
+        })
+        .catch(err => App.toast.show('Lỗi: ' + err.message, 'error'));
+    });
+  }
+
+  // --- TAB 4: USERS MANAGEMENT & RBAC ---
+  function renderAdminUsersTab(container) {
+    const users = adminDataCache.users || [];
+    container.innerHTML = `
+      <div class="card">
+        <h3 style="color:var(--secondary); margin-bottom:1rem;">Danh Sách Người Dùng & Phân Quyền (${users.length} tài khoản)</h3>
+
+        <div class="table-container">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>User ID</th>
+                <th>Email</th>
+                <th>Tên Hiển Thị</th>
+                <th>Vai Trò Hệ Thống</th>
+                <th>Ngày Tạo</th>
+                <th style="text-align:right;">Gán Quyền</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${users.map(u => `
+                <tr>
+                  <td><code>${u.user_id}</code></td>
+                  <td><strong>${u.email}</strong></td>
+                  <td>${u.display_name || ''}</td>
+                  <td>
+                    <span class="badge ${u.system_role === 'super_admin' ? 'badge-danger' : (u.system_role === 'organizer' ? 'badge-primary' : 'badge-secondary')}">
+                      ${u.system_role || 'user'}
+                    </span>
+                  </td>
+                  <td>${formatDate(u.created_at)}</td>
+                  <td style="text-align:right;">
+                    <select class="form-control" style="width:auto; display:inline-block; font-size:0.8rem; padding:2px 6px;" onchange="adminChangeUserRole('${u.email}', this.value)">
+                      <option value="user" ${(u.system_role || 'user') === 'user' ? 'selected' : ''}>User thường</option>
+                      <option value="organizer" ${u.system_role === 'organizer' ? 'selected' : ''}>Organizer</option>
+                      <option value="super_admin" ${u.system_role === 'super_admin' ? 'selected' : ''}>🛡️ Super Admin</option>
+                    </select>
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+  }
+
+  function adminChangeUserRole(email, newRole) {
+    App.server.call('apiAdminUpdateUserRole', email, newRole)
+      .then(res => {
+        App.toast.show(res.message || 'Cập nhật quyền thành công!', 'success');
+        loadAdminDashboardData();
+      })
+      .catch(err => App.toast.show('Lỗi: ' + err.message, 'error'));
+  }
+
+  // --- TAB 5: AUDIT LOG ---
+  function renderAdminAuditTab(container) {
+    const logs = adminDataCache.auditLogs || [];
+    container.innerHTML = `
+      <div class="card">
+        <h3 style="color:var(--accent); margin-bottom:1rem;">📜 Nhật Ký Hoạt Động Hệ Thống (Top 100 Gần Nhất)</h3>
+
+        <div class="table-container">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Thời Gian</th>
+                <th>Người Thực Hiện</th>
+                <th>Hành Động (Action)</th>
+                <th>Thực Thể</th>
+                <th>Mã Đối Tượng</th>
+                <th>Chi Tiết</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${logs.length === 0 ? `<tr><td colspan="6" style="text-align:center;">Chưa có nhật ký nào.</td></tr>` : ''}
+              ${logs.map(log => `
+                <tr>
+                  <td style="white-space:nowrap; font-size:0.8rem; color:var(--text-muted);">${formatDate(log.timestamp)}</td>
+                  <td><strong>${log.user_email}</strong></td>
+                  <td><span class="badge badge-open" style="font-size:0.75rem;">${log.action}</span></td>
+                  <td>${log.entity_type}</td>
+                  <td><code>${log.entity_id || '-'}</code></td>
+                  <td style="font-size:0.85rem; max-width:300px; word-break:break-all;">${log.details}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+  }
+</script>

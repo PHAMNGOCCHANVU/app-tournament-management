@@ -258,6 +258,13 @@
           if (res) {
             App.state.user = Object.assign({}, App.state.user, res);
             App.updateUserBadge();
+
+            if (res.isSystemAdmin) {
+              const adminNav = document.getElementById('nav-item-admin');
+              const mobileAdminNav = document.getElementById('mobile-nav-item-admin');
+              if (adminNav) adminNav.style.display = 'inline-block';
+              if (mobileAdminNav) mobileAdminNav.style.display = 'block';
+            }
           }
         })
         .catch(err => console.log('Auth check error:', err));
@@ -290,6 +297,7 @@
       };
 
       const initialChar = displayEmail ? displayEmail.charAt(0).toUpperCase() : '👤';
+      const isSysAdmin = !!App.state.user.isSystemAdmin;
 
       if (displayEmail) {
         // Render PC Avatar + Popover Dropdown
@@ -303,8 +311,14 @@
               <div class="user-popover-email">${displayEmail}</div>
               <div class="user-popover-badge">
                 <span class="user-badge" style="${roleStyles[roleLabel] || roleStyles.viewer}">${roleLabel}</span>
+                ${isSysAdmin ? `<span class="user-badge" style="background:#dc2626; color:#fff; margin-left:4px;">Super Admin</span>` : ''}
               </div>
               <div class="user-popover-actions">
+                ${isSysAdmin ? `
+                  <button class="btn btn-sm btn-primary" style="width:100%; justify-content:center; margin-bottom:0.5rem;" onclick="App.router.navigateTo('admin_view'); App.closeUserDropdown();">
+                    🛡️ Quản Trị Hệ Thống
+                  </button>
+                ` : ''}
                 <button class="btn btn-sm btn-secondary" style="width:100%; justify-content:center;" onclick="App.router.navigateTo('profile'); App.closeUserDropdown();">
                   👤 Profile
                 </button>
@@ -323,6 +337,7 @@
               <div style="overflow:hidden; flex:1;">
                 <div style="font-weight:600; font-size:0.85rem; color:#fff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${displayEmail}</div>
                 <span class="user-badge" style="margin-top:0.15rem; font-size:0.7rem; ${roleStyles[roleLabel] || roleStyles.viewer}">${roleLabel}</span>
+                ${isSysAdmin ? `<span class="user-badge" style="background:#dc2626; color:#fff; font-size:0.65rem; margin-left:4px;">Admin</span>` : ''}
               </div>
             </div>
 
@@ -330,8 +345,14 @@
               <div class="user-popover-email">${displayEmail}</div>
               <div class="user-popover-badge">
                 <span class="user-badge" style="${roleStyles[roleLabel] || roleStyles.viewer}">${roleLabel}</span>
+                ${isSysAdmin ? `<span class="user-badge" style="background:#dc2626; color:#fff; margin-left:4px;">Super Admin</span>` : ''}
               </div>
               <div class="user-popover-actions">
+                ${isSysAdmin ? `
+                  <button class="btn btn-sm btn-primary" style="width:100%; justify-content:center; margin-bottom:0.5rem;" onclick="App.router.navigateTo('admin_view'); App.closeMobileMenu(); App.closeMobileUserDropdown();">
+                    🛡️ Quản Trị Hệ Thống
+                  </button>
+                ` : ''}
                 <button class="btn btn-sm btn-secondary" style="width:100%; justify-content:center;" onclick="App.router.navigateTo('profile'); App.closeMobileMenu(); App.closeMobileUserDropdown();">
                   👤 Profile
                 </button>

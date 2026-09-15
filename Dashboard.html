@@ -21,10 +21,11 @@
       <!-- Filters & Search Bar -->
       <div style="display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin-bottom: 1.5rem; flex-wrap: wrap;">
         <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;" id="status-filter-buttons">
-          <button class="btn btn-sm btn-secondary filter-btn active" data-status="all" onclick="filterTournaments('all')">Tất cả</button>
+          <button class="btn btn-sm btn-secondary filter-btn active" data-status="active" onclick="filterTournaments('active')">🔥 Đang hoạt động</button>
           <button class="btn btn-sm btn-secondary filter-btn" data-status="open" onclick="filterTournaments('open')">Đang mở đăng ký</button>
           <button class="btn btn-sm btn-secondary filter-btn" data-status="in_progress" onclick="filterTournaments('in_progress')">Đang thi đấu</button>
-          <button class="btn btn-sm btn-secondary filter-btn" data-status="completed" onclick="filterTournaments('completed')">Đã kết thúc</button>
+          <button class="btn btn-sm btn-secondary filter-btn" data-status="completed" onclick="filterTournaments('completed')">🏁 Đã kết thúc</button>
+          <button class="btn btn-sm btn-secondary filter-btn" data-status="all" onclick="filterTournaments('all')">Tất cả</button>
         </div>
 
         <div style="width: 300px;">
@@ -51,7 +52,7 @@
     App.server.call('apiGetTournamentList')
       .then(tournaments => {
         cachedTournaments = tournaments || [];
-        renderTournamentCards(cachedTournaments);
+        filterTournaments('active');
       })
       .catch(err => {
         App.toast.show('Không thể tải danh sách giải đấu: ' + err.message, 'error');
@@ -125,7 +126,10 @@
       else btn.classList.remove('active');
     });
 
-    if (status === 'all') {
+    if (status === 'active') {
+      const activeList = cachedTournaments.filter(t => t.status !== 'completed' && t.status !== 'cancelled');
+      renderTournamentCards(activeList);
+    } else if (status === 'all') {
       renderTournamentCards(cachedTournaments);
     } else {
       const filtered = cachedTournaments.filter(t => t.status === status);
@@ -134,10 +138,20 @@
   }
 
   function searchTournaments() {
+    const activeBtn = document.querySelector('#status-filter-buttons .filter-btn.active');
+    const currentStatus = activeBtn ? activeBtn.dataset.status : 'active';
     const query = (document.getElementById('search-tournament-input').value || '').toLowerCase();
-    const filtered = cachedTournaments.filter(t =>
-      t.name.toLowerCase().includes(query) ||
-      t.location.toLowerCase().includes(query)
+
+    let baseList = cachedTournaments;
+    if (currentStatus === 'active') {
+      baseList = cachedTournaments.filter(t => t.status !== 'completed' && t.status !== 'cancelled');
+    } else if (currentStatus !== 'all') {
+      baseList = cachedTournaments.filter(t => t.status === currentStatus);
+    }
+
+    const filtered = baseList.filter(t =>
+      (t.name || '').toLowerCase().includes(query) ||
+      (t.location || '').toLowerCase().includes(query)
     );
     renderTournamentCards(filtered);
   }

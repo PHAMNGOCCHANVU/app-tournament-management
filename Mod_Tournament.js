@@ -41,11 +41,18 @@ class TournamentConfigService {
       organizer_email: userEmail,
       status: TOURNAMENT_STATUS.DRAFT,
       created_at: now,
-      updated_at: now
+      updated_at: now,
+      fee_type: data.fee_type || (data.is_paid ? 'paid' : 'free'),
+      entry_fee: Number(data.entry_fee) || 0,
+      qr_code_url: data.qr_code_url || '',
+      bank_info: typeof data.bank_info === 'object' ? JSON.stringify(data.bank_info) : (data.bank_info || '')
     };
 
     this.tournamentRepo.insert(tournament);
     auth.assignRole(tournamentId, userEmail, 'organizer', userEmail);
+    if (typeof logAudit === 'function') {
+      logAudit('CREATE_TOURNAMENT', 'Tournament', tournamentId, `Tạo giải đấu: ${tournament.name}`);
+    }
 
     tournament.sports = [];
     if (Array.isArray(data.sports) && data.sports.length > 0) {
@@ -246,7 +253,44 @@ class TournamentConfigService {
       this.tsRepo.update(ts.ts_id, { status: tsStatus });
     });
 
+    if (newStatus === TOURNAMENT_STATUS.IN_PROGRESS) {
+      try {
+        if (typeof getEmailService === 'function') {
+          getEmailService().sendTournamentStartedNotification(tournamentId);
+        }
+      } catch (e) {
+        if (typeof Logger !== 'undefined' && Logger.log) Logger.log('Lỗi gửi email bắt đầu giải: ' + e.message);
+      }
+    }
+
+    if (typeof logAudit === 'function') {
+      logAudit('CHANGE_STATUS', 'Tournament', tournamentId, `Đổi trạng thái giải sang: ${newStatus}`);
+    }
+
     return updated;
+  }
+
+  /**
+   * Update Tournament Payment Config (Organizer only)
+   */
+  updatePaymentConfig(tournamentId, config) {
+    getAuthService().checkPermission(tournamentId, ['organizer']);
+    const tournament = this.tournamentRepo.getById(tournamentId);
+    if (!tournament) throw new Error('Không tìm thấy giải đấu.');
+
+    const updateData = {
+      fee_type: config.fee_type || (config.is_paid ? 'paid' : 'free'),
+      entry_fee: !isNaN(Number(config.entry_fee)) ? Number(config.entry_fee) : 0,
+      qr_code_url: config.qr_code_url || '',
+      bank_info: typeof config.bank_info === 'object' ? JSON.stringify(config.bank_info) : (config.bank_info || ''),
+      updated_at: new Date().toISOString()
+    };
+
+    const res = this.tournamentRepo.update(tournamentId, updateData);
+    if (typeof logAudit === 'function') {
+      logAudit('UPDATE_PAYMENT_CONFIG', 'Tournament', tournamentId, `Cập nhật cấu hình thu phí: ${updateData.fee_type}, phí: ${updateData.entry_fee}`);
+    }
+    return res;
   }
 }
 
@@ -310,4 +354,6 @@ function apiGetTournamentList(filters) { return getTournamentService().getTourna
 function apiGetTournamentById(tournamentId) { return getTournamentService().getTournamentById(tournamentId); }
 function apiAddSportToTournament(tournamentId, config) { return getTournamentService().addSportToTournament(tournamentId, config); }
 function apiUpdateTournamentStatus(tournamentId, newStatus) { return getTournamentService().updateStatus(tournamentId, newStatus); }
+function apiStartTournament(tournamentId) { return getTournamentService().updateStatus(tournamentId, TOURNAMENT_STATUS.IN_PROGRESS); }
+function apiUpdateTournamentPaymentConfig(tournamentId, config) { return getTournamentService().updatePaymentConfig(tournamentId, config); }
 function apiGetAllSports() { return new BaseRepository('Sport', 'sport_id').getAll(); }

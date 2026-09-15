@@ -4,18 +4,19 @@
 
 // Global Sheet Schema Definition
 const SCHEMAS = {
-  Tournament: ['tournament_id', 'name', 'description', 'start_date', 'end_date', 'location', 'organizer_email', 'status', 'created_at', 'updated_at'],
+  Tournament: ['tournament_id', 'name', 'description', 'start_date', 'end_date', 'location', 'organizer_email', 'status', 'created_at', 'updated_at', 'fee_type', 'entry_fee', 'qr_code_url', 'bank_info'],
   Sport: ['sport_id', 'name', 'type', 'min_players_per_team', 'max_players_per_team', 'scoring_type', 'description', 'categories', 'positions', 'position_rules', 'has_skill_level', 'default_levels'],
   // [MODIFY]: Thêm points_target_per_set vào TournamentSport
   TournamentSport: ['ts_id', 'tournament_id', 'sport_id', 'format', 'max_teams', 'min_teams', 'points_for_win', 'points_for_draw', 'points_for_loss', 'num_groups', 'teams_advance_per_group', 'registration_deadline', 'status', 'category', 'skill_level', 'points_target_per_set'],
-  Team: ['team_id', 'ts_id', 'name', 'captain_email', 'registration_date', 'status', 'group_name', 'seed'],
+  Team: ['team_id', 'ts_id', 'name', 'captain_email', 'registration_date', 'status', 'group_name', 'seed', 'payment_status', 'payment_proof', 'athlete_level'],
   Player: ['player_id', 'team_id', 'name', 'email', 'phone', 'jersey_number', 'role_in_team', 'gender', 'position'],
   Match: ['match_id', 'ts_id', 'round', 'round_name', 'group_name', 'team1_id', 'team2_id', 'team1_score', 'team2_score', 'winner_team_id', 'match_date', 'location', 'status', 'notes', 'updated_by', 'updated_at'],
   // [MODIFY]: Thêm các cột tính điểm Set vào Ranking
   Ranking: ['ranking_id', 'ts_id', 'team_id', 'group_name', 'played', 'won', 'drawn', 'lost', 'goals_for', 'goals_against', 'goal_difference', 'points', 'rank', 'sets_won', 'sets_lost', 'sets_diff', 'points_for', 'points_against', 'points_diff'],
-  User: ['user_id', 'email', 'display_name', 'created_at'],
+  User: ['user_id', 'email', 'display_name', 'created_at', 'system_role'],
   TournamentRole: ['role_id', 'tournament_id', 'user_email', 'role', 'assigned_at', 'assigned_by'],
-  SportScore: ['match_id', 'sport_type', 'set1_a', 'set1_b', 'set2_a', 'set2_b', 'set3_a', 'set3_b', 'extra_data', 'updated_at']
+  SportScore: ['match_id', 'sport_type', 'set1_a', 'set1_b', 'set2_a', 'set2_b', 'set3_a', 'set3_b', 'extra_data', 'updated_at'],
+  AuditLog: ['log_id', 'timestamp', 'user_email', 'action', 'entity_type', 'entity_id', 'details']
 };
 
 // Tournament Lifecycle Statuses
@@ -142,7 +143,7 @@ const SEED_SPORTS = [
     positions: JSON.stringify([]),
     position_rules: JSON.stringify({}),
     has_skill_level: true,
-    default_levels: JSON.stringify(['A', 'B', 'C'])
+    default_levels: JSON.stringify(['1.0', '1.5', '2.0', '2.5', '3.0', '3.5', '4.0', '4.5', '5.0', '5.5', '6.0'])
   },
   {
     sport_id: 'S004',
@@ -156,7 +157,7 @@ const SEED_SPORTS = [
     positions: JSON.stringify([]),
     position_rules: JSON.stringify({}),
     has_skill_level: true,
-    default_levels: JSON.stringify(['A', 'B', 'C'])
+    default_levels: JSON.stringify(['1.0', '1.5', '2.0', '2.5', '3.0', '3.5', '4.0', '4.5', '5.0', '5.5', '6.0'])
   },
   {
     sport_id: 'S005',
@@ -170,6 +171,17 @@ const SEED_SPORTS = [
     positions: JSON.stringify([]),
     position_rules: JSON.stringify({}),
     has_skill_level: true,
-    default_levels: JSON.stringify(['A', 'B', 'C'])
+    default_levels: JSON.stringify(['1.0', '1.5', '2.0', '2.5', '3.0', '3.5', '4.0', '4.5', '5.0', '5.5', '6.0'])
   }
 ];
+
+// Standard 11 Athlete Levels & 3 Groupings
+const STANDARD_ATHLETE_LEVELS = [
+  '1.0', '1.5', '2.0', '2.5', '3.0', '3.5', '4.0', '4.5', '5.0', '5.5', '6.0'
+];
+
+const LEVEL_GROUPS = {
+  GROUP_1: { name: 'Hạng Sơ Cấp (1.0 - 2.0)', min: 1.0, max: 2.0, levels: ['1.0', '1.5', '2.0'] },
+  GROUP_2: { name: 'Hạng Trung Cấp (2.5 - 4.0)', min: 2.5, max: 4.0, levels: ['2.5', '3.0', '3.5', '4.0'] },
+  GROUP_3: { name: 'Hạng Nâng Cao (4.5 - 6.0)', min: 4.5, max: 6.0, levels: ['4.5', '5.0', '5.5', '6.0'] }
+};

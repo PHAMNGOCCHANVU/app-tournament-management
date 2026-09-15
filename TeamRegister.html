@@ -49,6 +49,30 @@
               <label class="form-label">Email Đội trưởng / Người đại diện *</label>
               <input type="email" class="form-control" id="reg-captain-email" required placeholder="doitruong@gmail.com">
             </div>
+
+            <div class="form-group" id="reg-athlete-level-group">
+              <label class="form-label">Trình độ VĐV (Thang điểm chuẩn 1.0 - 6.0)</label>
+              <select class="form-control" id="reg-athlete-level">
+                <option value="">-- Chọn trình độ VĐV (Tùy chọn) --</option>
+                <optgroup label="Hạng Phong trào (1.0 - 2.0)">
+                  <option value="1.0">Level 1.0 (Mới tập chơi / Làm quen)</option>
+                  <option value="1.5">Level 1.5 (Nắm luật cơ bản)</option>
+                  <option value="2.0">Level 2.0 (Đánh bóng qua lại cơ bản)</option>
+                </optgroup>
+                <optgroup label="Hạng Trung cấp (2.5 - 4.0)">
+                  <option value="2.5">Level 2.5 (Bắt đầu kiểm soát bóng tốt)</option>
+                  <option value="3.0">Level 3.0 (Đánh đều, giao bóng ổn định)</option>
+                  <option value="3.5">Level 3.5 (Biết điều cầu/bóng, phối hợp tốt)</option>
+                  <option value="4.0">Level 4.0 (Tấn công chủ động, thể lực tốt)</option>
+                </optgroup>
+                <optgroup label="Hạng Nâng cao / Chuyên nghiệp (4.5 - 6.0)">
+                  <option value="4.5">Level 4.5 (Chiến thuật cao, xử lý bóng khó)</option>
+                  <option value="5.0">Level 5.0 (Cấp độ thi đấu giải tỉnh/thành phố)</option>
+                  <option value="5.5">Level 5.5 (VĐV bán chuyên / Đẳng cấp cao)</option>
+                  <option value="6.0">Level 6.0 (VĐV chuyên nghiệp / Kiện tướng)</option>
+                </optgroup>
+              </select>
+            </div>
           </div>
 
           <!-- Roster Members -->
@@ -60,6 +84,22 @@
 
             <div id="players-input-list">
               <!-- Dynamic player input rows -->
+            </div>
+          </div>
+
+          <!-- Payment Section (Shown if Tournament is Paid) -->
+          <div class="card" id="reg-payment-card" style="margin-bottom:1.5rem; display:none;">
+            <h3 style="margin-bottom:1rem; color:var(--warning);">💳 4. Lệ Phí & Thanh Toán Tham Gia</h3>
+            <div id="reg-payment-info-box" style="background:rgba(15,23,42,0.6); padding:1rem; border-radius:var(--radius-md); border:1px solid var(--border); margin-bottom:1rem;">
+            </div>
+            <div class="form-group" style="margin-bottom:1rem;">
+              <label class="form-label" style="font-weight:600; color:var(--primary);">Tải Lên Biên Lai Chuyển Khoản (Ảnh chụp Bill) *</label>
+              <input type="file" id="reg-receipt-file-input" accept="image/*" class="form-control" onchange="handleReceiptFileSelect(event)" style="background:rgba(15,23,42,0.3); border-color:var(--border);">
+              <input type="hidden" id="reg-payment-proof-data">
+              <div id="reg-receipt-preview-container" style="margin-top:0.75rem; display:none;">
+                <img id="reg-receipt-preview-img" src="" style="max-height:160px; border-radius:6px; border:1px solid var(--border); box-shadow:0 4px 10px rgba(0,0,0,0.3);">
+                <p style="font-size:0.8rem; color:var(--success); margin-top:0.25rem;">✓ Đã chọn ảnh biên lai thành công</p>
+              </div>
             </div>
           </div>
 
@@ -81,6 +121,8 @@
 
   let openTournamentsList = [];
   let currentTournamentSports = [];
+  let currentSelectedTournament = null;
+  let currentUploadedReceiptBase64 = '';
 
   function loadOpenTournamentsForRegistration(presetId) {
     App.server.call('apiGetTournamentList', { status: 'open' })
@@ -103,12 +145,18 @@
     const tId = document.getElementById('reg-tournament-select').value;
     const tsSelect = document.getElementById('reg-ts-select');
     tsSelect.innerHTML = `<option value="">-- Chọn Môn Thi Đấu --</option>`;
+    currentSelectedTournament = null;
+    currentUploadedReceiptBase64 = '';
+    updateRegistrationPaymentCard(null);
 
     if (!tId) return;
 
     App.server.call('apiGetTournamentById', tId)
       .then(t => {
-        if (!t || !t.sports) return;
+        if (!t) return;
+        currentSelectedTournament = t;
+        updateRegistrationPaymentCard(t);
+        if (!t.sports) return;
         currentTournamentSports = t.sports;
         const openSports = t.sports.filter(s => s.status === 'open');
         tsSelect.innerHTML = `<option value="">-- Chọn Môn Thi Đấu --</option>` +
@@ -118,6 +166,77 @@
             return `<option value="${s.ts_id}">${s.sport_name}${catLabel}${lvlLabel} (Hạn: ${s.registration_deadline || 'Không có'})</option>`;
           }).join('');
       });
+  }
+
+  function updateRegistrationPaymentCard(t) {
+    const paymentCard = document.getElementById('reg-payment-card');
+    const paymentInfoBox = document.getElementById('reg-payment-info-box');
+    const receiptInput = document.getElementById('reg-receipt-file-input');
+    const receiptPreview = document.getElementById('reg-receipt-preview-container');
+    const proofHidden = document.getElementById('reg-payment-proof-data');
+
+    if (!paymentCard || !paymentInfoBox) return;
+
+    if (receiptInput) receiptInput.value = '';
+    if (proofHidden) proofHidden.value = '';
+    if (receiptPreview) receiptPreview.style.display = 'none';
+    currentUploadedReceiptBase64 = '';
+
+    const isPaid = t && (t.fee_type === 'paid' || Number(t.entry_fee) > 0);
+    if (!isPaid) {
+      paymentCard.style.display = 'none';
+      if (receiptInput) receiptInput.required = false;
+      return;
+    }
+
+    paymentCard.style.display = 'block';
+    if (receiptInput) receiptInput.required = true;
+
+    const feeFormatted = Number(t.entry_fee || 0).toLocaleString('vi-VN') + ' VNĐ / Đội';
+    let qrHtml = '';
+    if (t.qr_code_url) {
+      qrHtml = `
+        <div style="text-align:center; margin-top:1rem; padding:0.75rem; background:rgba(255,255,255,0.03); border-radius:8px; border:1px dashed var(--border);">
+          <p style="font-size:0.85rem; font-weight:bold; color:var(--primary); margin-bottom:0.5rem;">Quét mã QR dưới đây để chuyển khoản:</p>
+          <img src="${t.qr_code_url}" alt="Mã QR Chuyển khoản" style="max-height:180px; border-radius:8px; border:1px solid var(--border); box-shadow:0 4px 12px rgba(0,0,0,0.4);">
+        </div>
+      `;
+    }
+
+    paymentInfoBox.innerHTML = `
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem; flex-wrap:wrap; gap:0.5rem;">
+        <span style="font-size:0.95rem; color:var(--text-muted);">Lệ phí tham gia giải:</span>
+        <strong style="color:var(--warning); font-size:1.25rem;">${feeFormatted}</strong>
+      </div>
+      ${t.bank_info ? `
+        <div style="margin-top:0.5rem; font-size:0.9rem;">
+          <span style="color:var(--text-muted);">Thông tin tài khoản thụ hưởng:</span>
+          <div style="font-weight:600; color:var(--text-main); margin-top:0.25rem; background:rgba(0,0,0,0.25); padding:0.6rem; border-radius:4px; border:1px solid var(--border);">
+            ${t.bank_info}
+          </div>
+        </div>
+      ` : ''}
+      ${qrHtml}
+      <p style="font-size:0.8rem; color:var(--text-muted); margin-top:0.75rem; line-height:1.4;">
+        💡 <i>Hướng dẫn:</i> Vui lòng chuyển khoản lệ phí theo thông tin trên (Cú pháp: <b>[Tên Đội] - Le phi giai</b>), sau đó chụp ảnh màn hình chuyển khoản thành công và tải lên ô bên dưới.
+      </p>
+    `;
+  }
+
+  function handleReceiptFileSelect(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      currentUploadedReceiptBase64 = e.target.result;
+      const previewContainer = document.getElementById('reg-receipt-preview-container');
+      const previewImg = document.getElementById('reg-receipt-preview-img');
+      const proofHidden = document.getElementById('reg-payment-proof-data');
+      if (proofHidden) proofHidden.value = currentUploadedReceiptBase64;
+      if (previewImg) previewImg.src = currentUploadedReceiptBase64;
+      if (previewContainer) previewContainer.style.display = 'block';
+    };
+    reader.readAsDataURL(file);
   }
 
   function onRegisterTsChange() {
@@ -238,6 +357,18 @@
     submitBtn.disabled = true;
     submitBtn.innerText = '⏳ Đang đăng ký...';
 
+    const isPaidTournament = currentSelectedTournament && (currentSelectedTournament.fee_type === 'paid' || Number(currentSelectedTournament.entry_fee) > 0);
+    const paymentProof = currentUploadedReceiptBase64 || (document.getElementById('reg-payment-proof-data') ? document.getElementById('reg-payment-proof-data').value : '');
+
+    if (isPaidTournament && !paymentProof) {
+      App.toast.show('Vui lòng đính kèm ảnh biên lai chuyển khoản lệ phí giải đấu.', 'error');
+      submitBtn.disabled = false;
+      submitBtn.innerText = '✉️ Gửi Đơn Đăng Ký';
+      return;
+    }
+
+    const athleteLevel = document.getElementById('reg-athlete-level') ? document.getElementById('reg-athlete-level').value : '';
+
     const playersData = [];
     document.querySelectorAll('#players-input-list .grid-4').forEach((row, idx) => {
       const name = row.querySelector('.p-name').value;
@@ -264,6 +395,8 @@
       ts_id: document.getElementById('reg-ts-select').value,
       name: document.getElementById('reg-team-name').value,
       captain_email: document.getElementById('reg-captain-email').value,
+      athlete_level: athleteLevel,
+      payment_proof: paymentProof,
       players: playersData
     };
 
@@ -271,7 +404,27 @@
       .then(team => {
         const teamId = team ? team.team_id : 'TM';
         const teamName = payload.name;
-        const vietQrUrl = `https://img.vietqr.io/image/970422-0345678999-compact2.png?amount=0&addInfo=${encodeURIComponent(teamId)}&accountName=BAN%20TO%20CHUC%20GIAI`;
+
+        let paymentDetailHtml = '';
+        if (isPaidTournament) {
+          paymentDetailHtml = `
+            <div style="background:rgba(245,158,11,0.1); border:1px solid var(--warning); padding:1rem; border-radius:var(--radius-md); margin-bottom:1rem; text-align:left;">
+              <p style="color:var(--warning); font-weight:bold; margin-bottom:0.25rem;">💳 Trạng thái thanh toán: Đã nộp biên lai</p>
+              <p style="font-size:0.85rem; color:var(--text-muted); margin-bottom:0.5rem;">Ban tổ chức sẽ đối soát giao dịch và duyệt đơn đăng ký của bạn sớm nhất.</p>
+              ${paymentProof ? `
+                <div style="text-align:center;">
+                  <img src="${paymentProof}" alt="Biên lai" style="max-height:120px; border-radius:4px; border:1px solid var(--border);">
+                </div>
+              ` : ''}
+            </div>
+          `;
+        } else {
+          paymentDetailHtml = `
+            <div style="background:rgba(34,197,94,0.1); border:1px solid var(--success); padding:1rem; border-radius:var(--radius-md); margin-bottom:1rem; text-align:left;">
+              <p style="color:var(--success); font-weight:bold; margin:0;">🎉 Giải đấu miễn phí tham gia. Đơn đăng ký đã gửi đến BTC!</p>
+            </div>
+          `;
+        }
 
         const modalBody = `
           <div style="text-align:center;">
@@ -285,26 +438,21 @@
               <p style="font-size:0.9rem; margin-bottom:0.35rem;">
                 Mã Đội (Team ID): <strong style="color:var(--primary); font-size:1.1rem;">${teamId}</strong>
               </p>
+              ${athleteLevel ? `<p style="font-size:0.85rem; color:var(--text-muted); margin-bottom:0.35rem;">Trình độ VĐV: <strong>Level ${athleteLevel}</strong></p>` : ''}
               <p style="font-size:0.85rem; color:var(--text-muted);">
-                Trạng thái: <span class="badge badge-open">Chờ duyệt / Thanh toán</span>
+                Trạng thái duyệt: <span class="badge badge-open">Chờ duyệt (Pending)</span>
               </p>
             </div>
 
-            <div class="qr-container">
-              <p style="font-weight:700; color:#0f172a; margin-bottom:0.5rem; font-size:0.95rem;">Quét Mã QR Chuyển Khoản Lệ Phí (VietQR)</p>
-              <img src="${vietQrUrl}" alt="VietQR Payment">
-              <p style="font-size:0.8rem; color:#64748b; margin-top:0.5rem;">
-                Nội dung CK: <strong style="color:#0f172a;">${teamId}</strong> (Hệ thống tự động duyệt qua Webhook)
-              </p>
-            </div>
+            ${paymentDetailHtml}
 
             <p style="font-size:0.85rem; color:var(--text-muted); margin-top:1rem;">
-              Ban tổ chức sẽ gửi email xác nhận đến hòm thư của bạn. Bạn cũng có thể theo dõi trạng thái tại Trang Cá Nhân.
+              Ban tổ chức sẽ gửi email xác nhận đến hòm thư <b>${payload.captain_email}</b>. Bạn cũng có thể theo dõi trạng thái tại Trang Cá Nhân.
             </p>
           </div>
         `;
 
-        App.modal.open('Xác Nhận Đăng Ký & Thanh Toán', modalBody, () => {
+        App.modal.open('Xác Nhận Đăng Ký', modalBody, () => {
           App.router.navigateTo('dashboard');
         }, 'Về Trang Chủ');
       })
