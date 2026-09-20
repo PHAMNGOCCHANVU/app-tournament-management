@@ -240,3 +240,53 @@ function formatDate(dateString) {
     return dateString;
   }
 }
+
+/**
+ * Utility: Lưu ảnh Base64 vào Google Drive và trả về Direct CDN URL
+ * ID Thư mục lưu trữ: 1c18_z72B8VLkLl5AGwvh4l_jwv0XxczQ
+ */
+const DEFAULT_DRIVE_FOLDER_ID = '1c18_z72B8VLkLl5AGwvh4l_jwv0XxczQ';
+
+function saveBase64ImageToDrive(base64Data, fileNamePrefix = 'IMG', folderId = DEFAULT_DRIVE_FOLDER_ID) {
+  if (!base64Data || typeof base64Data !== 'string') return '';
+  // Nếu đã là link URL (http:// hoặc https://) thì giữ nguyên
+  if (base64Data.startsWith('http://') || base64Data.startsWith('https://')) {
+    return base64Data;
+  }
+  // Kiểm tra chuỗi Data URL Base64
+  if (!base64Data.startsWith('data:image')) {
+    return base64Data;
+  }
+
+  try {
+    const parts = base64Data.split(',');
+    if (parts.length < 2) return '';
+    const meta = parts[0];
+    const rawBase64 = parts[1];
+
+    let mimeType = 'image/png';
+    const mimeMatch = meta.match(/data:([^;]+);/);
+    if (mimeMatch && mimeMatch[1]) {
+      mimeType = mimeMatch[1];
+    }
+    const ext = mimeType.split('/')[1] || 'png';
+    const fileName = `${fileNamePrefix}_${Date.now()}.${ext}`;
+
+    const decodedBytes = Utilities.base64Decode(rawBase64);
+    const blob = Utilities.newBlob(decodedBytes, mimeType, fileName);
+
+    const folder = DriveApp.getFolderById(folderId);
+    const file = folder.createFile(blob);
+    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+
+    const fileId = file.getId();
+    // Direct Google CDN link cho phép nhúng thẻ <img> hiển thị tức thì
+    return `https://lh3.googleusercontent.com/d/${fileId}`;
+  } catch (err) {
+    if (typeof Logger !== 'undefined' && Logger.log) {
+      Logger.log(`[saveBase64ImageToDrive] Error: ${err.message}`);
+    }
+    return '';
+  }
+}
+

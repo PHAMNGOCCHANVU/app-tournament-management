@@ -2,6 +2,9 @@
   /**
    * Team Registration View Controller
    */
+  window.App = window.App || {};
+  window.App.views = window.App.views || {};
+
   App.views.team_register = function (params = {}) {
     const container = document.getElementById('app-view');
     const selectedTournamentId = params.tournamentId || '';

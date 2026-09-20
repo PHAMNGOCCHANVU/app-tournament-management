@@ -107,6 +107,11 @@ class RegistrationService {
       throw new Error('Vui lòng đính kèm ảnh biên lai/chuyển khoản thanh toán phí tham gia.');
     }
 
+    let finalProof = data.payment_proof || '';
+    if (typeof saveBase64ImageToDrive === 'function' && finalProof.startsWith('data:image')) {
+      finalProof = saveBase64ImageToDrive(finalProof, `BILL_${teamId}`);
+    }
+
     const newTeam = {
       team_id: teamId,
       ts_id: data.ts_id,
@@ -117,7 +122,7 @@ class RegistrationService {
       group_name: data.group_name || '',
       seed: Number(data.seed) || 0,
       payment_status: paymentStatus,
-      payment_proof: data.payment_proof || '',
+      payment_proof: finalProof,
       athlete_level: data.athlete_level || ''
     };
 

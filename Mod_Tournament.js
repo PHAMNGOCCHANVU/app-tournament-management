@@ -44,7 +44,9 @@ class TournamentConfigService {
       updated_at: now,
       fee_type: data.fee_type || (data.is_paid ? 'paid' : 'free'),
       entry_fee: Number(data.entry_fee) || 0,
-      qr_code_url: data.qr_code_url || '',
+      qr_code_url: (typeof saveBase64ImageToDrive === 'function' && data.qr_code_url && data.qr_code_url.startsWith('data:image'))
+        ? saveBase64ImageToDrive(data.qr_code_url, `QR_${tournamentId}`)
+        : (data.qr_code_url || ''),
       bank_info: typeof data.bank_info === 'object' ? JSON.stringify(data.bank_info) : (data.bank_info || '')
     };
 
@@ -278,10 +280,15 @@ class TournamentConfigService {
     const tournament = this.tournamentRepo.getById(tournamentId);
     if (!tournament) throw new Error('Không tìm thấy giải đấu.');
 
+    let finalQrUrl = config.qr_code_url || '';
+    if (typeof saveBase64ImageToDrive === 'function' && finalQrUrl.startsWith('data:image')) {
+      finalQrUrl = saveBase64ImageToDrive(finalQrUrl, `QR_${tournamentId}`);
+    }
+
     const updateData = {
       fee_type: config.fee_type || (config.is_paid ? 'paid' : 'free'),
       entry_fee: !isNaN(Number(config.entry_fee)) ? Number(config.entry_fee) : 0,
-      qr_code_url: config.qr_code_url || '',
+      qr_code_url: finalQrUrl,
       bank_info: typeof config.bank_info === 'object' ? JSON.stringify(config.bank_info) : (config.bank_info || ''),
       updated_at: new Date().toISOString()
     };

@@ -76,10 +76,26 @@ const mockContext = {
   Logger: {
     log: jest.fn()
   },
+  DriveApp: {
+    getFolderById: (folderId) => ({
+      createFile: (blob) => ({
+        getId: () => 'mock_file_123_' + blob.getName(),
+        setSharing: jest.fn()
+      })
+    }),
+    Access: { ANYONE_WITH_LINK: 'ANYONE_WITH_LINK' },
+    Permission: { VIEW: 'VIEW' }
+  },
   Utilities: {
     getUuid: () => Math.random().toString(36).substring(2, 14),
     formatString: (format, ...args) => require('util').format(format, ...args),
-    formatDate: (date, tz, format) => date.toISOString()
+    formatDate: (date, tz, format) => date.toISOString(),
+    base64Decode: (str) => Buffer.from(str || '', 'base64'),
+    newBlob: (bytes, mime, name) => ({
+      getName: () => name,
+      getBytes: () => bytes,
+      getContentType: () => mime
+    })
   },
   Session: {
     getActiveUser: () => ({
@@ -814,7 +830,7 @@ describe('SPORT TOURNAMENT V3 TEST PLAN EXECUTION SUITE', () => {
       expect(paidTournament.fee_type).toBe('paid');
       expect(Number(paidTournament.entry_fee)).toBe(250000);
       expect(paidTournament.bank_info).toContain('Vietcombank');
-      expect(paidTournament.qr_code_url).toContain('mockqrdata');
+      expect(paidTournament.qr_code_url).toContain('https://lh3.googleusercontent.com/d/mock_file_123_QR_');
 
       // 2. Update payment config
       myLib.apiUpdateTournamentPaymentConfig(paidTournament.tournament_id, {
@@ -842,7 +858,7 @@ describe('SPORT TOURNAMENT V3 TEST PLAN EXECUTION SUITE', () => {
       expect(team.team_id).toBeDefined();
       expect(team.athlete_level).toBe('3.5');
       expect(team.payment_status).toBe('unpaid');
-      expect(team.payment_proof).toContain('receiptbillimage');
+      expect(team.payment_proof).toContain('https://lh3.googleusercontent.com/d/mock_file_123_BILL_');
 
       // 4. Organizer verifies and confirms payment
       myLib.apiUpdateTeamPaymentStatus(team.team_id, 'paid');
@@ -900,5 +916,31 @@ describe('SPORT TOURNAMENT V3 TEST PLAN EXECUTION SUITE', () => {
       expect(allLogs.length).toBeGreaterThan(0);
       expect(allLogs.some(l => l.action === 'UPDATE_USER_SYSTEM_ROLE')).toBe(true);
     });
+
+    test('V4-5: Google Drive Image Storage and Admin Passcode Verification', () => {
+      // 1. Direct call to saveBase64ImageToDrive
+      const mockBase64 = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+      const cdnUrl = myLib.saveBase64ImageToDrive(mockBase64, 'TEST_UPLOAD');
+      expect(cdnUrl).toContain('https://lh3.googleusercontent.com/d/mock_file_123_TEST_UPLOAD_');
+
+      // 2. Existing URL passes through without modification
+      const existingUrl = 'https://lh3.googleusercontent.com/d/existing_image_id';
+      expect(myLib.saveBase64ImageToDrive(existingUrl)).toBe(existingUrl);
+
+      // 3. Admin Passcode Verification
+      const passResult = myLib.apiVerifyAdminPasscode('admin123');
+      expect(passResult.success).toBe(true);
+
+      // 4. Invalid Passcode throws
+      expect(() => myLib.apiVerifyAdminPasscode('wrong_code')).toThrow(/Mã bảo mật/);
+
+      // 5. Regular user can unlock admin dashboard with valid passcode
+      mockContext.currentUserEmail = 'unauthorized_visitor@test.com';
+      expect(() => myLib.apiGetAdminDashboardData()).toThrow(/Từ chối truy cập/);
+      
+      const dashboardUnlocked = myLib.apiGetAdminDashboardData('admin123');
+      expect(dashboardUnlocked.kpis).toBeDefined();
+    });
   });
 });
+

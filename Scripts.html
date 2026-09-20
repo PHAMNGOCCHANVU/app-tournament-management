@@ -82,10 +82,15 @@
           </div>
         `;
 
-        // Render target view template
-        setTimeout(() => {
+        // Render target view template with polling to prevent race conditions during script loading
+        let attempts = 0;
+        const maxAttempts = 20; // 20 * 50ms = 1000ms max wait for partial script execution
+        const checkAndRenderView = () => {
           if (typeof App.views[pageName] === 'function') {
             App.views[pageName](params);
+          } else if (attempts < maxAttempts) {
+            attempts++;
+            setTimeout(checkAndRenderView, 50);
           } else {
             container.innerHTML = `
               <div class="card" style="text-align:center; padding:3rem;">
@@ -95,7 +100,8 @@
               </div>
             `;
           }
-        }, 100);
+        };
+        checkAndRenderView();
       }
     },
 
@@ -558,6 +564,8 @@
       }
     }
   });
+
+  window.App = App;
 
   document.addEventListener('DOMContentLoaded', () => {
     App.init();

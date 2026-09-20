@@ -35,10 +35,21 @@ class AuthService {
   }
 
   /**
-   * Lấy email của người deploy/chủ sở hữu script (Tự động giữ quyền Super Admin)
+   * Lấy email của người deploy/chủ sở hữu script hoặc cấu hình trong ScriptProperties
    */
   getSystemSuperAdminEmail() {
     try {
+      if (typeof PropertiesService !== 'undefined' && PropertiesService.getScriptProperties) {
+        const propEmail = PropertiesService.getScriptProperties().getProperty('SUPER_ADMIN_EMAIL');
+        if (propEmail) return propEmail.toLowerCase().trim();
+      }
+      // 2. Kiểm tra trong User repo xem có user nào system_role === 'super_admin'
+      const adminUser = this.userRepo.findOne(u => u.system_role === 'super_admin');
+      if (adminUser && adminUser.email) {
+        return String(adminUser.email).toLowerCase().trim();
+      }
+
+      // 3. Fallback sang Session.getEffectiveUser (tài khoản người deploy web app)
       if (typeof Session !== 'undefined' && Session.getEffectiveUser) {
         const effective = Session.getEffectiveUser();
         if (effective && effective.getEmail()) {
@@ -52,13 +63,28 @@ class AuthService {
   }
 
   /**
+   * Xác thực mã khóa bảo mật Quản trị viên (Admin Passcode)
+   */
+  verifyAdminPasscode(passcode) {
+    if (!passcode) return false;
+    let validKey = 'admin123';
+    try {
+      if (typeof PropertiesService !== 'undefined' && PropertiesService.getScriptProperties) {
+        const propKey = PropertiesService.getScriptProperties().getProperty('ADMIN_SECRET_KEY');
+        if (propKey) validKey = propKey;
+      }
+    } catch (e) {}
+    return String(passcode).trim() === validKey.trim();
+  }
+
+  /**
    * Kiểm tra người dùng có quyền Quản trị toàn hệ thống (Super Admin) hay không
    */
   isSystemAdmin(userEmail) {
     const email = (userEmail || this.getCurrentUserEmail()).toLowerCase().trim();
     if (!email) return false;
 
-    // 1. Tự động cấp quyền Super Admin cho tài khoản triển khai web app
+    // 1. Kiểm tra email Super Admin được cấu hình tường minh
     const superAdmin = this.getSystemSuperAdminEmail();
     if (superAdmin && email === superAdmin) return true;
 
@@ -72,13 +98,14 @@ class AuthService {
   /**
    * Bảo vệ API System Admin, ném lỗi nếu không có quyền
    */
-  checkSystemAdminAccess() {
+  checkSystemAdminAccess(passcode) {
     const email = this.getCurrentUserEmail();
-    if (!this.isSystemAdmin(email)) {
-      this.logAudit('ADMIN_ACCESS_DENIED', 'System', 'ALL', `Email ${email} attempted unauthorized admin access`);
-      throw new Error('Từ chối truy cập: Bạn không có quyền Quản Trị Hệ Thống (Super Admin).');
+    const isPasscodeValid = passcode ? this.verifyAdminPasscode(passcode) : false;
+    if (!this.isSystemAdmin(email) && !isPasscodeValid) {
+      this.logAudit('ADMIN_ACCESS_DENIED', 'System', 'ALL', `Email ${email || 'anonymous'} attempted unauthorized admin access`);
+      throw new Error('Từ chối truy cập: Bạn không có quyền Quản Trị Hệ Thống (Super Admin). Vui lòng xác thực mã bảo mật.');
     }
-    return email;
+    return email || 'admin_passcode_user';
   }
 
   /**
@@ -337,9 +364,18 @@ function apiIsSystemAdmin() {
   };
 }
 
-function apiGetAdminDashboardData() {
+function apiVerifyAdminPasscode(passcode) {
   const auth = getAuthService();
-  const adminEmail = auth.checkSystemAdminAccess();
+  const isValid = auth.verifyAdminPasscode(passcode);
+  if (isValid) {
+    return { success: true };
+  }
+  throw new Error('Mã bảo mật Quản trị viên không chính xác. Vui lòng thử lại.');
+}
+
+function apiGetAdminDashboardData(passcode) {
+  const auth = getAuthService();
+  const adminEmail = auth.checkSystemAdminAccess(passcode);
 
   const tourRepo = new BaseRepository('Tournament', 'tournament_id');
   const userRepo = new BaseRepository('User', 'user_id');
@@ -374,9 +410,9 @@ function apiGetAdminDashboardData() {
   };
 }
 
-function apiAdminUpdateUserRole(targetEmail, systemRole) {
+function apiAdminUpdateUserRole(targetEmail, systemRole, passcode) {
   const auth = getAuthService();
-  const adminEmail = auth.checkSystemAdminAccess();
+  const adminEmail = auth.checkSystemAdminAccess(passcode);
   const userRepo = new BaseRepository('User', 'user_id');
   const cleanEmail = String(targetEmail).toLowerCase().trim();
 
@@ -390,9 +426,9 @@ function apiAdminUpdateUserRole(targetEmail, systemRole) {
   return { success: true, message: `Đã cập nhật vai trò ${systemRole} cho ${cleanEmail}` };
 }
 
-function apiAdminAddSport(sportData) {
+function apiAdminAddSport(sportData, passcode) {
   const auth = getAuthService();
-  const adminEmail = auth.checkSystemAdminAccess();
+  const adminEmail = auth.checkSystemAdminAccess(passcode);
   const sportRepo = new BaseRepository('Sport', 'sport_id');
 
   const newSport = {
@@ -413,9 +449,9 @@ function apiAdminAddSport(sportData) {
   return newSport;
 }
 
-function apiAdminUpdateSport(sportId, sportData) {
+function apiAdminUpdateSport(sportId, sportData, passcode) {
   const auth = getAuthService();
-  const adminEmail = auth.checkSystemAdminAccess();
+  const adminEmail = auth.checkSystemAdminAccess(passcode);
   const sportRepo = new BaseRepository('Sport', 'sport_id');
 
   const updated = sportRepo.update(sportId, sportData);
@@ -423,9 +459,9 @@ function apiAdminUpdateSport(sportId, sportData) {
   return updated;
 }
 
-function apiAdminDeleteTournament(tournamentId) {
+function apiAdminDeleteTournament(tournamentId, passcode) {
   const auth = getAuthService();
-  const adminEmail = auth.checkSystemAdminAccess();
+  const adminEmail = auth.checkSystemAdminAccess(passcode);
   const tourRepo = new BaseRepository('Tournament', 'tournament_id');
 
   const t = tourRepo.getById(tournamentId);

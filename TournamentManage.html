@@ -530,11 +530,16 @@
 
   function saveTournamentPaymentConfig() {
     if (!currentManageTournament) return;
-    const isPaid = document.getElementById('manage-paid-toggle').checked;
-    const entryFee = Number(document.getElementById('manage-entry-fee').value) || 0;
-    const bankAcc = (document.getElementById('manage-bank-account').value || '').trim();
-    const bankOwner = (document.getElementById('manage-bank-owner').value || '').trim();
-    const qrCodeUrl = document.getElementById('manage-qr-code-url').value || '';
+    const paidToggle = document.getElementById('manage-paid-toggle');
+    const isPaid = paidToggle ? paidToggle.checked : false;
+    const feeInput = document.getElementById('manage-entry-fee');
+    const entryFee = feeInput ? (Number(feeInput.value) || 0) : 0;
+    const bankAccEl = document.getElementById('manage-bank-account');
+    const bankAcc = bankAccEl ? bankAccEl.value.trim() : '';
+    const bankOwnerEl = document.getElementById('manage-bank-owner');
+    const bankOwner = bankOwnerEl ? bankOwnerEl.value.trim() : '';
+    const qrUrlInput = document.getElementById('manage-qr-code-url');
+    const qrCodeUrl = qrUrlInput ? qrUrlInput.value : '';
 
     const bankInfo = bankOwner ? `${bankAcc} - Chủ TK: ${bankOwner}` : bankAcc;
 
