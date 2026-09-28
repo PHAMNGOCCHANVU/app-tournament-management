@@ -5,6 +5,25 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Quản lý Giải đấu Thể thao</title>
   <script>
+    // Khi mở file cục bộ trực tiếp trên máy tính: tự động chuyển hướng ngay sang preview.html đầy đủ
+    if (location.protocol === 'file:' || (typeof google === 'undefined' && !location.hostname.includes('google'))) {
+      if (!location.pathname.endsWith('preview.html')) {
+        location.replace('preview.html');
+      }
+    }
+  </script>
+  <style>
+    body {
+      background: #0f172a;
+      color: #f8fafc;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      margin: 0;
+    }
+    .navbar, .mobile-drawer {
+      display: none;
+    }
+  </style>
+  <script>
     /**
      * Early initialization for App object.
      * Guarantees App, App.router, and mobile menu helpers are defined immediately
@@ -1037,8 +1056,62 @@
       call: function (functionName, ...args) {
         return new Promise((resolve, reject) => {
           if (typeof google === 'undefined' || !google.script || !google.script.run) {
-            console.warn('google.script.run is unavailable. Operating in offline/test mode.');
-            reject(new Error('Môi trường Apps Script không khả dụng.'));
+            console.warn('[Offline Mock Mode] ' + functionName, args);
+            // Return realistic mock data when running offline / local preview
+            if (functionName === 'apiGetAuthContext') {
+              resolve({ email: 'admin@demo.com', role: 'admin', isSystemAdmin: true, isLoggedIn: true });
+              return;
+            }
+            if (functionName === 'apiGetTournamentList') {
+              resolve([
+                { id: 'T001', name: 'Giải Bóng Đá Mini Mùa Hè 2026', sportType: 'football', status: 'in_progress', format: 'round_robin', teamsCount: 8, maxTeams: 8, organizerEmail: 'admin@demo.com', startDate: '2026-07-01', location: 'Sân Vận Động Phú Nhuận' },
+                { id: 'T002', name: 'Giải Pickleball & Cầu Lông Mở Rộng 2026', sportType: 'pickleball', status: 'open', format: 'knockout', teamsCount: 4, maxTeams: 16, organizerEmail: 'admin@demo.com', startDate: '2026-08-15', location: 'CLB Thể Thao Kỳ Hòa' },
+                { id: 'T003', name: 'Giải Cầu Lông Đôi Nam Nữ 2026', sportType: 'badminton', status: 'completed', format: 'round_robin', teamsCount: 6, maxTeams: 6, organizerEmail: 'admin@demo.com', startDate: '2026-05-10', location: 'Nhà Thi Đấu Quận 7' }
+              ]);
+              return;
+            }
+            if (functionName === 'apiGetSchedulePageBundle') {
+              resolve({
+                tournaments: [
+                  { id: 'T001', name: 'Giải Bóng Đá Mini Mùa Hè 2026', sportType: 'football' },
+                  { id: 'T002', name: 'Giải Pickleball & Cầu Lông Mở Rộng 2026', sportType: 'pickleball' }
+                ],
+                matches: [
+                  { id: 'M1', tournamentId: 'T001', round: 1, team1Name: 'Chiến Binh Đỏ', team2Name: 'Hổ Cáp Xanh', scoreTeam1: 3, scoreTeam2: 1, status: 'completed', matchTime: '2026-07-02 08:30', venue: 'Sân 1' },
+                  { id: 'M2', tournamentId: 'T001', round: 1, team1Name: 'Rồng Vàng', team2Name: 'Đại Bàng Trắng', scoreTeam1: 2, scoreTeam2: 2, status: 'completed', matchTime: '2026-07-02 09:45', venue: 'Sân 2' },
+                  { id: 'M3', tournamentId: 'T001', round: 2, team1Name: 'Chiến Binh Đỏ', team2Name: 'Rồng Vàng', scoreTeam1: null, scoreTeam2: null, status: 'scheduled', matchTime: '2026-07-09 08:30', venue: 'Sân 1' }
+                ],
+                teams: [
+                  { id: 'TM1', name: 'Chiến Binh Đỏ' },
+                  { id: 'TM2', name: 'Hổ Cáp Xanh' },
+                  { id: 'TM3', name: 'Rồng Vàng' },
+                  { id: 'TM4', name: 'Đại Bàng Trắng' }
+                ]
+              });
+              return;
+            }
+            if (functionName === 'apiGetRankings') {
+              resolve([
+                { rank: 1, teamName: 'Chiến Binh Đỏ', played: 2, won: 2, drawn: 0, lost: 0, goalsFor: 5, goalsAgainst: 1, points: 6 },
+                { rank: 2, teamName: 'Rồng Vàng', played: 2, won: 1, drawn: 1, lost: 0, goalsFor: 4, goalsAgainst: 2, points: 4 },
+                { rank: 3, teamName: 'Đại Bàng Trắng', played: 2, won: 0, drawn: 1, lost: 1, goalsFor: 2, goalsAgainst: 4, points: 1 },
+                { rank: 4, teamName: 'Hổ Cáp Xanh', played: 2, won: 0, drawn: 0, lost: 2, goalsFor: 1, goalsAgainst: 5, points: 0 }
+              ]);
+              return;
+            }
+            if (functionName === 'apiGetTournamentDetail') {
+              resolve({
+                id: args[0] || 'T001',
+                name: 'Giải Bóng Đá Mini Mùa Hè 2026',
+                sportType: 'football',
+                status: 'in_progress',
+                format: 'round_robin',
+                teamsCount: 8,
+                maxTeams: 8
+              });
+              return;
+            }
+            resolve({ success: true, message: 'Thao tác mô phỏng thành công (Offline Preview)' });
             return;
           }
 

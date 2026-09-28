@@ -5,6 +5,25 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Quản lý Giải đấu Thể thao</title>
   <script>
+    // Khi mở file cục bộ trực tiếp trên máy tính: tự động chuyển hướng ngay sang preview.html đầy đủ
+    if (location.protocol === 'file:' || (typeof google === 'undefined' && !location.hostname.includes('google'))) {
+      if (!location.pathname.endsWith('preview.html')) {
+        location.replace('preview.html');
+      }
+    }
+  </script>
+  <style>
+    body {
+      background: #0f172a;
+      color: #f8fafc;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      margin: 0;
+    }
+    .navbar, .mobile-drawer {
+      display: none;
+    }
+  </style>
+  <script>
     /**
      * Early initialization for App object.
      * Guarantees App, App.router, and mobile menu helpers are defined immediately
