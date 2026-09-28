@@ -443,8 +443,11 @@
         })
         .catch(err => console.log('Auth check error:', err));
 
-      const initialPage = window.INITIAL_PAGE || 'dashboard';
-      const tournamentId = window.INITIAL_TOURNAMENT_ID || '';
+      const urlParams = (typeof URLSearchParams !== 'undefined') ? new URLSearchParams(window.location.search) : null;
+      const pageFromUrl = urlParams ? urlParams.get('page') : null;
+      const idFromUrl = urlParams ? (urlParams.get('id') || urlParams.get('tournamentId')) : null;
+      const initialPage = pageFromUrl || window.INITIAL_PAGE || 'dashboard';
+      const tournamentId = idFromUrl || window.INITIAL_TOURNAMENT_ID || '';
       App.router.navigateTo(initialPage, { tournamentId });
     },
 

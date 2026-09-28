@@ -1,4 +1,9 @@
 <script>
+  if (location.protocol === 'file:' && !location.pathname.endsWith('preview.html')) {
+    location.replace('preview.html?page=bracket');
+  }
+</script>
+<script>
   /**
    * Elimination Bracket Tree Visualizer View Controller
    */

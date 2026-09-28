@@ -1,4 +1,9 @@
 <script>
+  if (location.protocol === 'file:' && !location.pathname.endsWith('preview.html')) {
+    location.replace('preview.html?page=admin_view');
+  }
+</script>
+<script>
   /**
    * System Admin Panel View Controller
    * Multi-module control room for Super Admin

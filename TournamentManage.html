@@ -1,4 +1,9 @@
 <script>
+  if (location.protocol === 'file:' && !location.pathname.endsWith('preview.html')) {
+    location.replace('preview.html?page=tournament_manage');
+  }
+</script>
+<script>
   /**
    * Tournament Management View Controller (Organizer Control Room)
    */

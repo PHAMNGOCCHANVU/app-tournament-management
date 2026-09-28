@@ -1454,8 +1454,11 @@
         })
         .catch(err => console.log('Auth check error:', err));
 
-      const initialPage = window.INITIAL_PAGE || 'dashboard';
-      const tournamentId = window.INITIAL_TOURNAMENT_ID || '';
+      const urlParams = (typeof URLSearchParams !== 'undefined') ? new URLSearchParams(window.location.search) : null;
+      const pageFromUrl = urlParams ? urlParams.get('page') : null;
+      const idFromUrl = urlParams ? (urlParams.get('id') || urlParams.get('tournamentId')) : null;
+      const initialPage = pageFromUrl || window.INITIAL_PAGE || 'dashboard';
+      const tournamentId = idFromUrl || window.INITIAL_TOURNAMENT_ID || '';
       App.router.navigateTo(initialPage, { tournamentId });
     },
 
@@ -1757,6 +1760,11 @@
 
   <!-- Include Page Partial View Controllers -->
   <script>
+  if (location.protocol === 'file:' && !location.pathname.endsWith('preview.html')) {
+    location.replace('preview.html?page=dashboard');
+  }
+</script>
+<script>
   /**
    * Dashboard View Controller
    */
@@ -1915,6 +1923,11 @@
   }
 </script>
   <script>
+  if (location.protocol === 'file:' && !location.pathname.endsWith('preview.html')) {
+    location.replace('preview.html?page=tournament_create');
+  }
+</script>
+<script>
   /**
    * Tournament Create View Controller
    */
@@ -2313,6 +2326,11 @@
   }
 </script>
   <script>
+  if (location.protocol === 'file:' && !location.pathname.endsWith('preview.html')) {
+    location.replace('preview.html?page=tournament_manage');
+  }
+</script>
+<script>
   /**
    * Tournament Management View Controller (Organizer Control Room)
    */
@@ -3097,6 +3115,11 @@
   }
 </script>
   <script>
+  if (location.protocol === 'file:' && !location.pathname.endsWith('preview.html')) {
+    location.replace('preview.html?page=team_register');
+  }
+</script>
+<script>
   /**
    * Team Registration View Controller
    */
@@ -3565,6 +3588,11 @@
   }
 </script>
   <script>
+  if (location.protocol === 'file:' && !location.pathname.endsWith('preview.html')) {
+    location.replace('preview.html?page=schedule');
+  }
+</script>
+<script>
   /**
    * Schedule & Match List View Controller
    * Optimized: Uses apiGetSchedulePageBundle for single round-trip data loading
@@ -3825,6 +3853,11 @@
   }
 </script>
   <script>
+  if (location.protocol === 'file:' && !location.pathname.endsWith('preview.html')) {
+    location.replace('preview.html?page=match_result');
+  }
+</script>
+<script>
   /**
    * Match Result Entry View Controller (Referee/Organizer interface)
    * Enhanced with Multi-Set Score Engine (Pickleball, Badminton) & Match State Machine
@@ -4132,6 +4165,11 @@
   }
 </script>
   <script>
+  if (location.protocol === 'file:' && !location.pathname.endsWith('preview.html')) {
+    location.replace('preview.html?page=ranking');
+  }
+</script>
+<script>
   /**
    * Standings & Ranking View Controller
    * Optimized: Uses apiGetRankingPageBundle for single round-trip data loading
@@ -4370,6 +4408,11 @@
   }
 </script>
   <script>
+  if (location.protocol === 'file:' && !location.pathname.endsWith('preview.html')) {
+    location.replace('preview.html?page=bracket');
+  }
+</script>
+<script>
   /**
    * Elimination Bracket Tree Visualizer View Controller
    */
@@ -4545,6 +4588,11 @@
 </script>
 
   <script>
+  if (location.protocol === 'file:' && !location.pathname.endsWith('preview.html')) {
+    location.replace('preview.html?page=profile');
+  }
+</script>
+<script>
   /**
    * User Profile & Personal Dashboard View Controller
    */
@@ -4725,6 +4773,11 @@
 </script>
 
   <script>
+  if (location.protocol === 'file:' && !location.pathname.endsWith('preview.html')) {
+    location.replace('preview.html?page=admin_view');
+  }
+</script>
+<script>
   /**
    * System Admin Panel View Controller
    * Multi-module control room for Super Admin

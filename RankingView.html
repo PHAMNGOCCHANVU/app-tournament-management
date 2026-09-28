@@ -1,4 +1,9 @@
 <script>
+  if (location.protocol === 'file:' && !location.pathname.endsWith('preview.html')) {
+    location.replace('preview.html?page=ranking');
+  }
+</script>
+<script>
   /**
    * Standings & Ranking View Controller
    * Optimized: Uses apiGetRankingPageBundle for single round-trip data loading

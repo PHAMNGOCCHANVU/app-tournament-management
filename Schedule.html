@@ -1,4 +1,9 @@
 <script>
+  if (location.protocol === 'file:' && !location.pathname.endsWith('preview.html')) {
+    location.replace('preview.html?page=schedule');
+  }
+</script>
+<script>
   /**
    * Schedule & Match List View Controller
    * Optimized: Uses apiGetSchedulePageBundle for single round-trip data loading
