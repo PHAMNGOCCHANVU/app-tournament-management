@@ -4,6 +4,42 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Quản lý Giải đấu Thể thao</title>
+  <script>
+    /**
+     * Early initialization for App object.
+     * Guarantees App, App.router, and mobile menu helpers are defined immediately
+     * before DOM elements render, preventing ReferenceError in local preview or early clicks.
+     */
+    var App = window.App = window.App || {
+      state: { user: null },
+      views: (window.App && window.App.views) || {},
+      router: {
+        navigateTo: function (page, params) {
+          if (window.App && window.App.views && window.App.views[page] && typeof window.App.views[page].render === 'function') {
+            var container = document.getElementById('app-view');
+            if (container) window.App.views[page].render(container, params);
+          } else {
+            console.log('[App.router.navigateTo]', page, params);
+          }
+        }
+      },
+      toggleMobileMenu: function () {
+        var drawer = document.getElementById('mobile-drawer');
+        var overlay = document.getElementById('mobile-drawer-overlay');
+        if (drawer) drawer.classList.toggle('active');
+        if (overlay) overlay.classList.toggle('active');
+      },
+      closeMobileMenu: function () {
+        var drawer = document.getElementById('mobile-drawer');
+        var overlay = document.getElementById('mobile-drawer-overlay');
+        if (drawer) drawer.classList.remove('active');
+        if (overlay) overlay.classList.remove('active');
+      },
+      notify: function (msg, type) {
+        console.log('[Notice - ' + (type || 'info') + ']', msg);
+      }
+    };
+  </script>
   <?!= include('Styles'); ?>
 </head>
 <body>
@@ -36,7 +72,7 @@
         <li class="nav-item" data-page="ranking" onclick="App.router.navigateTo('ranking')">
           Standings
         </li>
-        <li class="nav-item" data-page="admin_view" id="nav-item-admin" style="display:none;" onclick="App.router.navigateTo('admin_view')">
+        <li class="nav-item" data-page="admin_view" id="nav-item-admin" onclick="App.router.navigateTo('admin_view')">
           🛡️ Admin
         </li>
       </ul>
@@ -77,7 +113,7 @@
       <li onclick="App.router.navigateTo('ranking'); App.closeMobileMenu();">
         📊 Standings
       </li>
-      <li id="mobile-nav-item-admin" style="display:none;" onclick="App.router.navigateTo('admin_view'); App.closeMobileMenu();">
+      <li id="mobile-nav-item-admin" onclick="App.router.navigateTo('admin_view'); App.closeMobileMenu();">
         🛡️ Admin Panel
       </li>
     </ul>
