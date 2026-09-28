@@ -27,10 +27,10 @@
     libero: 'Tự do (Libero)'
   };
 
-  window.App = window.App || {};
-  window.App.views = window.App.views || {};
+  var App = window.App = window.App || {};
+  App.views = App.views || {};
 
-  const App = {
+  Object.assign(App, {
     state: {
       user: { email: '', role: 'viewer', isLoggedIn: false },
       tournamentRoles: {},  // Per-tournament role cache: { "T001": "organizer", "T002": "referee" }
@@ -532,7 +532,7 @@
         this.isPaused = false;
       }
     }
-  };
+  });
 
   /**
    * Global Client-side Date Formatting Helper
