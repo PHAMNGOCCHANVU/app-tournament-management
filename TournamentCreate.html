@@ -131,7 +131,7 @@
   function loadSportsForCreation() {
     App.server.call('apiGetAllSports')
       .then(sports => {
-        systemSportsList = sports || [];
+        systemSportsList = Array.isArray(sports) ? sports : [];
         renderSportsSelector(systemSportsList);
       })
       .catch(err => {
@@ -157,7 +157,8 @@
     const container = document.getElementById('sports-selector-container');
     if (!container) return;
 
-    container.innerHTML = sports.map((s, idx) => {
+    const list = Array.isArray(sports) ? sports : [];
+    container.innerHTML = list.map((s, idx) => {
       const categories = safeJsonArray(s.categories);
       const defaultLevels = safeJsonArray(s.default_levels);
       

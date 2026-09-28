@@ -1062,19 +1062,97 @@
               resolve({ email: 'admin@demo.com', role: 'admin', isSystemAdmin: true, isLoggedIn: true });
               return;
             }
+            if (functionName === 'apiGetAllSports') {
+              resolve([
+                {
+                  sport_id: 'S001',
+                  name: 'Bóng đá',
+                  type: 'team',
+                  min_players_per_team: 7,
+                  max_players_per_team: 15,
+                  scoring_type: 'goals',
+                  description: 'Môn bóng đá',
+                  categories: ['open', 'mens', 'womens'],
+                  has_skill_level: false,
+                  default_levels: []
+                },
+                {
+                  sport_id: 'S002',
+                  name: 'Bóng chuyền',
+                  type: 'team',
+                  min_players_per_team: 6,
+                  max_players_per_team: 12,
+                  scoring_type: 'sets',
+                  description: 'Bóng chuyền',
+                  categories: ['mens', 'womens', 'mixed'],
+                  has_skill_level: false,
+                  default_levels: []
+                },
+                {
+                  sport_id: 'S003',
+                  name: 'Cầu lông',
+                  type: 'racket',
+                  min_players_per_team: 1,
+                  max_players_per_team: 2,
+                  scoring_type: 'sets',
+                  description: 'Cầu lông',
+                  categories: ['mens_singles', 'womens_singles', 'mens_doubles', 'womens_doubles', 'mixed_doubles'],
+                  has_skill_level: true,
+                  default_levels: ['1.0', '1.5', '2.0', '2.5', '3.0', '3.5', '4.0', '4.5', '5.0', '5.5', '6.0']
+                },
+                {
+                  sport_id: 'S004',
+                  name: 'Bóng bàn',
+                  type: 'table_tennis',
+                  min_players_per_team: 1,
+                  max_players_per_team: 2,
+                  scoring_type: 'sets',
+                  description: 'Bóng bàn',
+                  categories: ['mens_singles', 'womens_singles', 'mens_doubles', 'womens_doubles', 'mixed_doubles'],
+                  has_skill_level: true,
+                  default_levels: ['1.0', '1.5', '2.0', '2.5', '3.0', '3.5', '4.0', '4.5', '5.0', '5.5', '6.0']
+                },
+                {
+                  sport_id: 'S005',
+                  name: 'Pickleball',
+                  type: 'paddle',
+                  min_players_per_team: 2,
+                  max_players_per_team: 2,
+                  scoring_type: 'points',
+                  description: 'Pickleball',
+                  categories: ['mens_singles', 'womens_singles', 'mens_doubles', 'womens_doubles', 'mixed_doubles'],
+                  has_skill_level: true,
+                  default_levels: ['1.0', '1.5', '2.0', '2.5', '3.0', '3.5', '4.0', '4.5', '5.0', '5.5', '6.0']
+                }
+              ]);
+              return;
+            }
             if (functionName === 'apiGetTournamentList') {
               resolve([
-                { id: 'T001', name: 'Giải Bóng Đá Mini Mùa Hè 2026', sportType: 'football', status: 'in_progress', format: 'round_robin', teamsCount: 8, maxTeams: 8, organizerEmail: 'admin@demo.com', startDate: '2026-07-01', location: 'Sân Vận Động Phú Nhuận' },
-                { id: 'T002', name: 'Giải Pickleball & Cầu Lông Mở Rộng 2026', sportType: 'pickleball', status: 'open', format: 'knockout', teamsCount: 4, maxTeams: 16, organizerEmail: 'admin@demo.com', startDate: '2026-08-15', location: 'CLB Thể Thao Kỳ Hòa' },
-                { id: 'T003', name: 'Giải Cầu Lông Đôi Nam Nữ 2026', sportType: 'badminton', status: 'completed', format: 'round_robin', teamsCount: 6, maxTeams: 6, organizerEmail: 'admin@demo.com', startDate: '2026-05-10', location: 'Nhà Thi Đấu Quận 7' }
+                { id: 'T001', tournament_id: 'T001', name: 'Giải Bóng Đá Mini Mùa Hè 2026', sportType: 'football', status: 'in_progress', format: 'round_robin', teamsCount: 8, maxTeams: 8, organizerEmail: 'admin@demo.com', startDate: '2026-07-01', location: 'Sân Vận Động Phú Nhuận' },
+                { id: 'T002', tournament_id: 'T002', name: 'Giải Pickleball & Cầu Lông Mở Rộng 2026', sportType: 'pickleball', status: 'open', format: 'knockout', teamsCount: 4, maxTeams: 16, organizerEmail: 'admin@demo.com', startDate: '2026-08-15', location: 'CLB Thể Thao Kỳ Hòa' },
+                { id: 'T003', tournament_id: 'T003', name: 'Giải Cầu Lông Đôi Nam Nữ 2026', sportType: 'badminton', status: 'completed', format: 'round_robin', teamsCount: 6, maxTeams: 6, organizerEmail: 'admin@demo.com', startDate: '2026-05-10', location: 'Nhà Thi Đấu Quận 7' }
               ]);
+              return;
+            }
+            if (functionName === 'apiGetTournamentById') {
+              resolve({
+                tournament_id: args[0] || 'T001',
+                name: 'Giải Bóng Đá Mini Mùa Hè 2026',
+                status: 'open',
+                location: 'Sân Vận Động Phú Nhuận',
+                sports: [
+                  { ts_id: 'TS001', sport_name: 'Bóng đá Nam', category: 'mens', skill_level: 'open', status: 'open', registration_deadline: '2026-06-30' },
+                  { ts_id: 'TS002', sport_name: 'Bóng đá Nữ', category: 'womens', skill_level: 'open', status: 'open', registration_deadline: '2026-06-30' }
+                ]
+              });
               return;
             }
             if (functionName === 'apiGetSchedulePageBundle') {
               resolve({
                 tournaments: [
-                  { id: 'T001', name: 'Giải Bóng Đá Mini Mùa Hè 2026', sportType: 'football' },
-                  { id: 'T002', name: 'Giải Pickleball & Cầu Lông Mở Rộng 2026', sportType: 'pickleball' }
+                  { id: 'T001', tournament_id: 'T001', name: 'Giải Bóng Đá Mini Mùa Hè 2026', sportType: 'football' },
+                  { id: 'T002', tournament_id: 'T002', name: 'Giải Pickleball & Cầu Lông Mở Rộng 2026', sportType: 'pickleball' }
                 ],
                 matches: [
                   { id: 'M1', tournamentId: 'T001', round: 1, team1Name: 'Chiến Binh Đỏ', team2Name: 'Hổ Cáp Xanh', scoreTeam1: 3, scoreTeam2: 1, status: 'completed', matchTime: '2026-07-02 08:30', venue: 'Sân 1' },
@@ -1090,7 +1168,27 @@
               });
               return;
             }
-            if (functionName === 'apiGetRankings') {
+            if (functionName === 'apiGetRankingPageBundle') {
+              resolve({
+                tournamentList: [
+                  { id: 'T001', tournament_id: 'T001', name: 'Giải Bóng Đá Mini Mùa Hè 2026' },
+                  { id: 'T002', tournament_id: 'T002', name: 'Giải Pickleball & Cầu Lông Mở Rộng 2026' }
+                ],
+                tournament: {
+                  id: 'T001',
+                  tournament_id: 'T001',
+                  sports: [{ ts_id: 'TS001', sport_name: 'Bóng đá Nam' }]
+                },
+                rankings: [
+                  { rank: 1, teamName: 'Chiến Binh Đỏ', played: 2, won: 2, drawn: 0, lost: 0, goalsFor: 5, goalsAgainst: 1, points: 6 },
+                  { rank: 2, teamName: 'Rồng Vàng', played: 2, won: 1, drawn: 1, lost: 0, goalsFor: 4, goalsAgainst: 2, points: 4 },
+                  { rank: 3, teamName: 'Đại Bàng Trắng', played: 2, won: 0, drawn: 1, lost: 1, goalsFor: 2, goalsAgainst: 4, points: 1 },
+                  { rank: 4, teamName: 'Hổ Cáp Xanh', played: 2, won: 0, drawn: 0, lost: 2, goalsFor: 1, goalsAgainst: 5, points: 0 }
+                ]
+              });
+              return;
+            }
+            if (functionName === 'apiGetRankings' || functionName === 'apiGetRankingsByTournamentSport') {
               resolve([
                 { rank: 1, teamName: 'Chiến Binh Đỏ', played: 2, won: 2, drawn: 0, lost: 0, goalsFor: 5, goalsAgainst: 1, points: 6 },
                 { rank: 2, teamName: 'Rồng Vàng', played: 2, won: 1, drawn: 1, lost: 0, goalsFor: 4, goalsAgainst: 2, points: 4 },
@@ -1102,6 +1200,7 @@
             if (functionName === 'apiGetTournamentDetail') {
               resolve({
                 id: args[0] || 'T001',
+                tournament_id: args[0] || 'T001',
                 name: 'Giải Bóng Đá Mini Mùa Hè 2026',
                 sportType: 'football',
                 status: 'in_progress',
@@ -1948,7 +2047,7 @@
   function loadSportsForCreation() {
     App.server.call('apiGetAllSports')
       .then(sports => {
-        systemSportsList = sports || [];
+        systemSportsList = Array.isArray(sports) ? sports : [];
         renderSportsSelector(systemSportsList);
       })
       .catch(err => {
@@ -1974,7 +2073,8 @@
     const container = document.getElementById('sports-selector-container');
     if (!container) return;
 
-    container.innerHTML = sports.map((s, idx) => {
+    const list = Array.isArray(sports) ? sports : [];
+    container.innerHTML = list.map((s, idx) => {
       const categories = safeJsonArray(s.categories);
       const defaultLevels = safeJsonArray(s.default_levels);
       
