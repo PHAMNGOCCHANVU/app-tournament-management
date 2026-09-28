@@ -27,6 +27,9 @@
     libero: 'Tự do (Libero)'
   };
 
+  window.App = window.App || {};
+  window.App.views = window.App.views || {};
+
   const App = {
     state: {
       user: { email: '', role: 'viewer', isLoggedIn: false },
@@ -84,10 +87,22 @@
 
         // Render target view template with polling to prevent race conditions during script loading
         let attempts = 0;
-        const maxAttempts = 20; // 20 * 50ms = 1000ms max wait for partial script execution
+        const maxAttempts = 30; // 30 * 50ms = 1500ms max wait for partial script execution
         const checkAndRenderView = () => {
-          if (typeof App.views[pageName] === 'function') {
-            App.views[pageName](params);
+          const viewFn = (App.views && App.views[pageName]) || (window.App && window.App.views && window.App.views[pageName]);
+          if (typeof viewFn === 'function') {
+            try {
+              viewFn(params);
+            } catch (renderErr) {
+              console.error('Error rendering view [' + pageName + ']:', renderErr);
+              container.innerHTML = `
+                <div class="card" style="text-align:center; padding:3rem;">
+                  <h2 style="color:var(--danger);">Lỗi hiển thị trang</h2>
+                  <p style="color:var(--text-muted); margin-top:0.5rem;">${renderErr.message || renderErr}</p>
+                  <button class="btn btn-primary" style="margin-top:1.5rem;" onclick="App.router.navigateTo('dashboard')">Về Trang chủ</button>
+                </div>
+              `;
+            }
           } else if (attempts < maxAttempts) {
             attempts++;
             setTimeout(checkAndRenderView, 50);
@@ -108,7 +123,7 @@
     /**
      * Views Handler Registry
      */
-    views: {},
+    views: (window.App && window.App.views) ? window.App.views : {},
 
     /**
      * Toast Notifications Engine
@@ -567,7 +582,11 @@
 
   window.App = App;
 
-  document.addEventListener('DOMContentLoaded', () => {
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
+      App.init();
+    });
+  } else {
     App.init();
-  });
+  }
 </script>

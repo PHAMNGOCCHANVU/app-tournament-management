@@ -4,9 +4,6 @@
    * Optimized: Uses apiGetSchedulePageBundle for single round-trip data loading
    * Auth: Uses per-tournament role via App.hasRoleForTournament()
    */
-  window.App = window.App || {};
-  window.App.views = window.App.views || {};
-
   App.views.schedule = function (params = {}) {
     const container = document.getElementById('app-view');
     const selectedTournamentId = params.tournamentId || '';
@@ -58,7 +55,8 @@
   let currentTournamentDetails = null;
 
   function loadScheduleBundle(presetTId) {
-    App.server.call('apiGetSchedulePageBundle', selectedScheduleTournamentId)
+    const targetTId = presetTId || selectedScheduleTournamentId || '';
+    App.server.call('apiGetSchedulePageBundle', targetTId)
       .then(bundle => {
         if (!bundle) return;
 
