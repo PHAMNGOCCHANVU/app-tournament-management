@@ -146,13 +146,125 @@
       color: #818cf8;
       border: 1px solid rgba(99, 102, 241, 0.3);
     }
+
+    .preview-container {
+      text-align: center;
+      max-width: 600px;
+    }
+
+    .preview-title {
+      margin-bottom: 0.5rem;
+      font-family: var(--font-heading);
+    }
+
+    .preview-desc {
+      color: var(--text-muted);
+      margin-bottom: 1.5rem;
+    }
+
+    #modal-wrapper {
+      display: none;
+    }
+
+    .modal-header-title {
+      margin: 0;
+      font-size: 1.2rem;
+      color: #fff;
+    }
+
+    .modal-close-btn {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      font-size: 1.5rem;
+      cursor: pointer;
+    }
+
+    .modal-body-center {
+      text-align: center;
+    }
+
+    .modal-icon-success {
+      font-size: 3rem;
+      margin-bottom: 0.25rem;
+    }
+
+    .modal-title-success {
+      color: var(--secondary);
+      margin-bottom: 0.25rem;
+    }
+
+    .modal-desc-main {
+      font-size: 1rem;
+      color: var(--text-main);
+      margin-bottom: 1rem;
+    }
+
+    .team-id-card {
+      background: rgba(15, 23, 42, 0.6);
+      padding: 0.85rem 1rem;
+      border-radius: var(--radius-md);
+      border: 1px solid var(--border);
+      margin-bottom: 1rem;
+      text-align: left;
+    }
+
+    .team-id-label {
+      font-size: 0.9rem;
+      margin-bottom: 0.25rem;
+    }
+
+    .team-id-value {
+      color: var(--primary);
+      font-size: 1.15rem;
+      letter-spacing: 0.5px;
+    }
+
+    .team-id-desc {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      margin: 0;
+    }
+
+    .qr-instruction-title {
+      font-weight: 700;
+      color: #0f172a;
+      margin-bottom: 0.5rem;
+      font-size: 0.95rem;
+    }
+
+    .qr-instruction-content {
+      font-size: 0.8rem;
+      color: #475569;
+      margin-top: 0.5rem;
+    }
+
+    .qr-content-tag {
+      color: #0f172a;
+      background: #e2e8f0;
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+
+    .qr-instruction-notice {
+      font-size: 0.75rem;
+      color: #10b981;
+      font-weight: 600;
+      margin-top: 0.25rem;
+    }
+
+    .modal-footer-note {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      margin-top: 0.75rem;
+    }
   </style>
 </head>
 <body>
 
-  <div style="text-align: center; max-width: 600px;">
-    <h1 style="margin-bottom: 0.5rem; font-family: var(--font-heading);">Demo: Modal Thanh Toán VietQR Tự Động</h1>
-    <p style="color: var(--text-muted); margin-bottom: 1.5rem;">
+  <div class="preview-container">
+    <h1 class="preview-title">Demo: Modal Thanh Toán VietQR Tự Động</h1>
+    <p class="preview-desc">
       Khi người dùng hoàn tất đăng ký đội trên <code>TeamRegister.html</code>, modal này sẽ tự động bật lên với Team ID vừa sinh ra.
     </p>
 
@@ -162,7 +274,7 @@
   </div>
 
   <!-- Modal Container -->
-  <div id="modal-wrapper" style="display: none;"></div>
+  <div id="modal-wrapper"></div>
 
   <script>
     function showVietQrModal(teamName, teamId) {
@@ -172,40 +284,40 @@
         <div class="modal-backdrop">
           <div class="modal-box">
             <div class="modal-header">
-              <h3 style="margin: 0; font-size: 1.2rem; color: #fff;">Xác Nhận Đăng Ký & Thanh Toán</h3>
-              <button onclick="closeModal()" style="background:none; border:none; color:var(--text-muted); font-size:1.5rem; cursor:pointer;">&times;</button>
+              <h3 class="modal-header-title">Xác Nhận Đăng Ký & Thanh Toán</h3>
+              <button onclick="closeModal()" class="modal-close-btn">&times;</button>
             </div>
 
-            <div class="modal-body" style="text-align: center;">
-              <div style="font-size: 3rem; margin-bottom: 0.25rem;">🎉</div>
-              <h3 style="color: var(--secondary); margin-bottom: 0.25rem;">Đăng Ký Thành Công!</h3>
-              <p style="font-size: 1rem; color: var(--text-main); margin-bottom: 1rem;">
+            <div class="modal-body modal-body-center">
+              <div class="modal-icon-success">🎉</div>
+              <h3 class="modal-title-success">Đăng Ký Thành Công!</h3>
+              <p class="modal-desc-main">
                 Đội <strong>${teamName}</strong> đã được ghi nhận vào hệ thống.
               </p>
 
-              <div style="background: rgba(15,23,42,0.6); padding: 0.85rem 1rem; border-radius: var(--radius-md); border: 1px solid var(--border); margin-bottom: 1rem; text-align: left;">
-                <p style="font-size: 0.9rem; margin-bottom: 0.25rem;">
-                  Mã Đội (Team ID): <strong style="color: var(--primary); font-size: 1.15rem; letter-spacing: 0.5px;">${teamId}</strong>
+              <div class="team-id-card">
+                <p class="team-id-label">
+                  Mã Đội (Team ID): <strong class="team-id-value">${teamId}</strong>
                 </p>
-                <p style="font-size: 0.85rem; color: var(--text-muted); margin: 0;">
+                <p class="team-id-desc">
                   Trạng thái: <span class="badge">Chờ duyệt / Chờ thanh toán</span>
                 </p>
               </div>
 
               <div class="qr-container">
-                <p style="font-weight: 700; color: #0f172a; margin-bottom: 0.5rem; font-size: 0.95rem;">
+                <p class="qr-instruction-title">
                   Quét Mã QR Chuyển Khoản Lệ Phí (VietQR)
                 </p>
                 <img src="${vietQrUrl}" alt="VietQR Payment Code">
-                <p style="font-size: 0.8rem; color: #475569; margin-top: 0.5rem;">
-                  Nội dung CK: <strong style="color: #0f172a; background: #e2e8f0; padding: 2px 6px; border-radius: 4px;">${teamId}</strong>
+                <p class="qr-instruction-content">
+                  Nội dung CK: <strong class="qr-content-tag">${teamId}</strong>
                 </p>
-                <p style="font-size: 0.75rem; color: #10b981; font-weight: 600; margin-top: 0.25rem;">
+                <p class="qr-instruction-notice">
                   ✓ Hệ thống Webhook Sepay/Casso tự động đối soát & duyệt tức thì
                 </p>
               </div>
 
-              <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: 0.75rem;">
+              <p class="modal-footer-note">
                 Ban tổ chức sẽ gửi email thông báo xác nhận đến bạn sau khi nhận được chuyển khoản.
               </p>
             </div>
