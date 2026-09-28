@@ -15,9 +15,13 @@
       views: (window.App && window.App.views) || {},
       router: {
         navigateTo: function (page, params) {
-          if (window.App && window.App.views && window.App.views[page] && typeof window.App.views[page].render === 'function') {
-            var container = document.getElementById('app-view');
-            if (container) window.App.views[page].render(container, params);
+          var viewFn = (window.App && window.App.views && window.App.views[page]);
+          if (typeof viewFn === 'function') {
+            try {
+              viewFn(params || {});
+            } catch (err) {
+              console.error('[Router] Error rendering view [' + page + ']:', err);
+            }
           } else {
             console.log('[App.router.navigateTo]', page, params);
           }
@@ -39,6 +43,62 @@
         console.log('[Notice - ' + (type || 'info') + ']', msg);
       }
     };
+
+    // Automatic local runner for VS Code Microsoft Edge Tools & local dev preview
+    if (typeof google === 'undefined') {
+      window.addEventListener('DOMContentLoaded', function () {
+        if (!window.App.views || Object.keys(window.App.views).length === 0) {
+          if (location.protocol === 'http:' || location.protocol === 'https:') {
+            var partials = [
+              'Styles', 'Scripts', 'Dashboard', 'TournamentCreate', 'TournamentManage',
+              'TeamRegister', 'Schedule', 'MatchResult', 'RankingView', 'BracketView', 'Profile', 'AdminView'
+            ];
+            Promise.all(partials.map(function (name) {
+              return fetch(name + '.html').then(function (res) { return res.text(); });
+            })).then(function (contents) {
+              contents.forEach(function (html) {
+                var div = document.createElement('div');
+                div.innerHTML = html;
+                Array.from(div.querySelectorAll('style')).forEach(function (st) {
+                  document.head.appendChild(st);
+                });
+                Array.from(div.querySelectorAll('script')).forEach(function (sc) {
+                  var script = document.createElement('script');
+                  script.textContent = sc.textContent;
+                  document.body.appendChild(script);
+                });
+              });
+              if (window.App && window.App.init) window.App.init();
+            }).catch(function () {
+              showOfflineGuide();
+            });
+          } else {
+            showOfflineGuide();
+          }
+        }
+      });
+
+      function showOfflineGuide() {
+        var view = document.getElementById('app-view');
+        if (!view) return;
+        view.innerHTML = '<div style="max-width:680px; margin:2.5rem auto; padding:2rem; background:rgba(30,41,59,0.85); border:1px solid rgba(255,255,255,0.15); border-radius:16px; text-align:center; color:#f8fafc; box-shadow:0 12px 32px rgba(0,0,0,0.4);">' +
+          '<div style="font-size:3rem; margin-bottom:1rem;">🏆</div>' +
+          '<h2 style="font-size:1.6rem; margin-bottom:0.75rem;">Chế Độ Xem Trước Cục Bộ (Local Preview)</h2>' +
+          '<p style="color:#94a3b8; font-size:0.95rem; line-height:1.6; margin-bottom:1.5rem;">' +
+            'Bạn đang mở trực tiếp file nguồn <code>Index.html</code> trong VS Code / Microsoft Edge Tools.<br>' +
+            'Vì <code>Index.html</code> là template chứa các lệnh <code>include</code> của Google Apps Script, để xem và tương tác đầy đủ tất cả các trang, vui lòng mở file <code>preview.html</code>:' +
+          '</p>' +
+          '<div style="display:flex; justify-content:center; gap:1rem; flex-wrap:wrap;">' +
+            '<a href="preview.html" style="display:inline-flex; align-items:center; gap:0.5rem; padding:0.75rem 1.5rem; background:#6366f1; color:#fff; border-radius:8px; text-decoration:none; font-weight:600; font-size:0.95rem; box-shadow:0 4px 12px rgba(99,102,241,0.4);">' +
+              '🚀 Mở Giao Diện Đầy Đủ (preview.html)' +
+            '</a>' +
+            '<a href="https://script.google.com/macros/s/AKfycbyjkKVAbtnUOhkvGdLvr7hAhhrYvpQdnVTV_1XrihL_bRzkgiQ4mgKYL0M49QWWM0SH9A/exec" target="_blank" rel="noopener" style="display:inline-flex; align-items:center; gap:0.5rem; padding:0.75rem 1.5rem; background:rgba(255,255,255,0.1); color:#fff; border:1px solid rgba(255,255,255,0.2); border-radius:8px; text-decoration:none; font-weight:600; font-size:0.95rem;">' +
+              '🌐 Mở Web App Trực Tuyến' +
+            '</a>' +
+          '</div>' +
+        '</div>';
+      }
+    }
   </script>
   <?!= include('Styles'); ?>
 </head>

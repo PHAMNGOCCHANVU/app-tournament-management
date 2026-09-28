@@ -6,3 +6,5 @@
 .git/**
 .gitignore
 README.md
+preview.html
+build-preview.js

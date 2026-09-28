@@ -84,8 +84,8 @@
     top: 0;
     z-index: 100;
     background: var(--bg-glass);
-    backdrop-filter: blur(16px);
     -webkit-backdrop-filter: blur(16px);
+    backdrop-filter: blur(16px);
     border-bottom: 1px solid var(--border);
     padding: 1rem 0;
     margin-bottom: 2rem;
@@ -170,6 +170,7 @@
   /* Glass Cards */
   .card {
     background: var(--bg-card);
+    -webkit-backdrop-filter: blur(12px);
     backdrop-filter: blur(12px);
     border: 1px solid var(--border);
     border-radius: var(--radius-lg);
@@ -340,6 +341,7 @@
     right: 0;
     bottom: 0;
     background: rgba(0, 0, 0, 0.75);
+    -webkit-backdrop-filter: blur(8px);
     backdrop-filter: blur(8px);
     z-index: 1000;
     display: flex;
@@ -457,6 +459,7 @@
     border: 2px solid rgba(255, 255, 255, 0.2);
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
     transition: all 0.2s ease;
+    -webkit-user-select: none;
     user-select: none;
   }
 
@@ -538,6 +541,7 @@
     width: 100vw;
     height: 100vh;
     background: rgba(0, 0, 0, 0.6);
+    -webkit-backdrop-filter: blur(4px);
     backdrop-filter: blur(4px);
     z-index: 1050;
     opacity: 0;
