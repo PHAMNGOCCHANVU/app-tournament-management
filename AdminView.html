@@ -95,6 +95,23 @@
     const wrapper = document.getElementById('admin-view-wrapper');
     if (!wrapper || !adminDataCache) return;
 
+    const setup = adminDataCache.systemSetup || {};
+    let setupWarningHtml = '';
+    if (setup && (!setup.isSuperAdminConfigured || setup.isDefaultKey)) {
+      setupWarningHtml = `
+        <div class="card" style="background:rgba(239,68,68,0.08); border:1px solid rgba(239,68,68,0.4); padding:1rem 1.25rem; margin-bottom:1.5rem; border-radius:10px;">
+          <div style="display:flex; align-items:flex-start; gap:0.75rem;">
+            <span style="font-size:1.4rem; line-height:1;">⚠️</span>
+            <div style="font-size:0.875rem;">
+              <strong style="color:#ef4444; font-size:0.95rem; display:block; margin-bottom:0.25rem;">Cảnh Báo Cấu Hình Bảo Mật Hệ Thống</strong>
+              ${!setup.isSuperAdminConfigured ? '<div style="color:var(--text-main); margin-bottom:0.35rem;">• Chưa cấu hình <code>SUPER_ADMIN_EMAIL</code> trong Script Properties. Khi chạy ở chế độ <em>User accessing the app</em>, hãy thêm thuộc tính này trong Project Settings &gt; Script Properties để định danh Super Admin an toàn.</div>' : ''}
+              ${setup.isDefaultKey ? '<div style="color:var(--text-main);">• Hệ thống đang sử dụng mã khóa quản trị mặc định (<code>admin123</code>). Vui lòng thêm <code>ADMIN_SECRET_KEY</code> trong Script Properties để bảo vệ hệ thống khỏi truy cập trái phép.</div>' : ''}
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
     wrapper.innerHTML = `
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5rem; flex-wrap:wrap; gap:1rem;">
         <div>
@@ -106,6 +123,8 @@
         </div>
         <button class="btn btn-secondary btn-sm" onclick="loadAdminDashboardData()">🔄 Làm mới dữ liệu</button>
       </div>
+
+      ${setupWarningHtml}
 
       <!-- Navigation Tabs -->
       <div style="display:flex; gap:0.5rem; overflow-x:auto; margin-bottom:1.5rem; padding-bottom:0.25rem;">

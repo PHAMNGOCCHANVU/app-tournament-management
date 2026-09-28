@@ -4,6 +4,13 @@ const path = require('path');
 // Setup mock for Google Apps Script environment
 const mockSpreadsheet = {
   sheets: {},
+  getOwner() {
+    return {
+      getEmail() {
+        return 'admin@test.com';
+      }
+    };
+  },
   getSheetByName(name) {
     return this.sheets[name] || null;
   },
@@ -110,6 +117,15 @@ const mockContext = {
   },
   GmailApp: {
     sendEmail: jest.fn()
+  },
+  PropertiesService: {
+    getScriptProperties: () => ({
+      getProperty: (key) => {
+        if (key === 'SUPER_ADMIN_EMAIL') return 'admin@test.com';
+        if (key === 'ADMIN_SECRET_KEY') return 'admin123';
+        return null;
+      }
+    })
   },
   currentUserEmail: 'organizer@test.com',
   effectiveUserEmail: 'admin@test.com'
@@ -884,15 +900,27 @@ describe('SPORT TOURNAMENT V3 TEST PLAN EXECUTION SUITE', () => {
       const adminInfo = myLib.apiIsSystemAdmin();
       expect(adminInfo.isAdmin).toBe(true);
 
+      // 1b. Verify AuthContext distinguishes Super Admin vs Regular User
+      const adminAuth = myLib.apiGetAuthContext('');
+      expect(adminAuth.isSystemAdmin).toBe(true);
+      expect(adminAuth.role).toBe('super_admin');
+
       // 2. Super admin gets admin dashboard data
       const adminData = myLib.apiGetAdminDashboardData();
       expect(adminData.kpis).toBeDefined();
       expect(adminData.kpis.total_tournaments).toBeGreaterThan(0);
       expect(adminData.sports.length).toBeGreaterThan(0);
       expect(adminData.auditLogs).toBeDefined();
+      expect(adminData.systemSetup).toBeDefined();
+      expect(adminData.systemSetup.isSuperAdminConfigured).toBe(true);
 
-      // 3. Regular user is denied admin access
+      // 3. Regular user is denied admin access and is NOT recognized as system admin
       mockContext.currentUserEmail = 'regular_user@test.com';
+      mockContext.effectiveUserEmail = 'regular_user@test.com';
+      expect(myLib.apiIsSystemAdmin().isAdmin).toBe(false);
+      const regularAuth = myLib.apiGetAuthContext('');
+      expect(regularAuth.isSystemAdmin).toBe(false);
+      expect(regularAuth.role).toBe('viewer');
       expect(() => myLib.apiGetAdminDashboardData()).toThrow(/Từ chối truy cập/);
 
       // 4. Update user role (switch back to admin)

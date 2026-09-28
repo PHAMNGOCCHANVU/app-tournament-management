@@ -6,8 +6,9 @@
    */
   window.App = window.App || {};
   window.App.views = window.App.views || {};
+  if (typeof App !== 'undefined') App.views = window.App.views;
 
-  App.views.schedule = function (params = {}) {
+  App.views.schedule = window.App.views.schedule = function (params = {}) {
     const container = document.getElementById('app-view');
     const selectedTournamentId = params.tournamentId || '';
 
@@ -190,7 +191,9 @@
     // FIX: Use per-tournament role instead of global App.state.user.role
     const isRefOrOrg = App.hasRoleForTournament(selectedScheduleTournamentId, ['organizer', 'referee']);
 
-    const currentSport = currentTournamentDetails?.sports?.find(s => s.ts_id === selectedScheduleTsId);
+    const currentSport = (currentTournamentDetails && Array.isArray(currentTournamentDetails.sports))
+      ? currentTournamentDetails.sports.find(s => s.ts_id === selectedScheduleTsId)
+      : null;
     const sportName = currentSport ? currentSport.sport_name : '';
 
     container.innerHTML = Object.keys(roundGroups).map(rName => `

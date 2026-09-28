@@ -35,10 +35,13 @@ class AuthService {
   }
 
   /**
-   * Lấy email của người deploy/chủ sở hữu script hoặc cấu hình trong ScriptProperties
+   * Lấy email của Super Admin hệ thống từ ScriptProperties hoặc database
+   * LƯU Ý BẢO MẬT: Không sử dụng Session.getEffectiveUser() ở chế độ deploy USER_ACCESSING,
+   * vì getEffectiveUser() sẽ trả về email người truy cập hiện tại dẫn đến việc ai cũng thành Super Admin.
    */
   getSystemSuperAdminEmail() {
     try {
+      // 1. Kiểm tra cấu hình trong ScriptProperties (Khuyến nghị số 1 cho USER_ACCESSING)
       if (typeof PropertiesService !== 'undefined' && PropertiesService.getScriptProperties) {
         const propEmail = PropertiesService.getScriptProperties().getProperty('SUPER_ADMIN_EMAIL');
         if (propEmail) return propEmail.toLowerCase().trim();
@@ -48,12 +51,16 @@ class AuthService {
       if (adminUser && adminUser.email) {
         return String(adminUser.email).toLowerCase().trim();
       }
-
-      // 3. Fallback sang Session.getEffectiveUser (tài khoản người deploy web app)
-      if (typeof Session !== 'undefined' && Session.getEffectiveUser) {
-        const effective = Session.getEffectiveUser();
-        if (effective && effective.getEmail()) {
-          return effective.getEmail().toLowerCase().trim();
+      // 3. Tự động nhận diện chủ sở hữu Google Spreadsheet DB (Tài khoản đã tạo/deploy app)
+      // SpreadsheetApp.getActiveSpreadsheet().getOwner().getEmail() LUÔN trả về chủ sở hữu file sheet,
+      // an toàn tuyệt đối và không bị ảnh hưởng bởi ai đang truy cập web app (khác với Session.getEffectiveUser).
+      if (typeof SpreadsheetApp !== 'undefined' && SpreadsheetApp.getActiveSpreadsheet) {
+        const ss = SpreadsheetApp.getActiveSpreadsheet();
+        if (ss && ss.getOwner) {
+          const owner = ss.getOwner();
+          if (owner && owner.getEmail && owner.getEmail()) {
+            return owner.getEmail().toLowerCase().trim();
+          }
         }
       }
     } catch (e) {
@@ -136,17 +143,28 @@ class AuthService {
     const cleanEmail = email.toLowerCase().trim();
     let user = this.userRepo.findOne(u => String(u.email).toLowerCase() === cleanEmail);
 
+    const isSysAdmin = this.isSystemAdmin(cleanEmail);
     const now = new Date().toISOString();
     if (!user) {
       user = {
         user_id: generateId('U'),
         email: cleanEmail,
         display_name: displayName || cleanEmail.split('@')[0],
-        created_at: now
+        created_at: now,
+        system_role: isSysAdmin ? 'super_admin' : ''
       };
       this.userRepo.insert(user);
-    } else if (displayName && user.display_name !== displayName) {
-      user = this.userRepo.update(user.user_id, { display_name: displayName });
+    } else {
+      const updates = {};
+      if (displayName && user.display_name !== displayName) {
+        updates.display_name = displayName;
+      }
+      if (isSysAdmin && user.system_role !== 'super_admin') {
+        updates.system_role = 'super_admin';
+      }
+      if (Object.keys(updates).length > 0) {
+        user = this.userRepo.update(user.user_id, updates);
+      }
     }
     return user;
   }
@@ -321,9 +339,12 @@ function apiGetAuthContext(tournamentId) {
     auth.registerUser(email);
   }
 
+  // Khi chưa vào một giải đấu cụ thể và là Super Admin, gán role hiển thị là super_admin
+  const effectiveRole = (!tournamentId && isSysAdmin) ? 'super_admin' : role;
+
   return {
     email: email,
-    role: role,
+    role: effectiveRole,
     isLoggedIn: !!email,
     isSystemAdmin: isSysAdmin
   };
@@ -406,7 +427,43 @@ function apiGetAdminDashboardData(passcode) {
     tournaments: allTournaments,
     users: allUsers,
     sports: allSports,
-    auditLogs: allAudits
+    auditLogs: allAudits,
+    systemSetup: apiCheckSystemSetup()
+  };
+}
+
+/**
+ * Kiểm tra cấu hình bảo mật hệ thống
+ */
+function apiCheckSystemSetup() {
+  const auth = getAuthService();
+  let hasSuperAdminEmail = false;
+  let isDefaultSecretKey = true;
+
+  try {
+    if (typeof PropertiesService !== 'undefined' && PropertiesService.getScriptProperties) {
+      const props = PropertiesService.getScriptProperties();
+      const superAdmin = props.getProperty('SUPER_ADMIN_EMAIL');
+      if (superAdmin && superAdmin.trim()) {
+        hasSuperAdminEmail = true;
+      }
+      const secretKey = props.getProperty('ADMIN_SECRET_KEY');
+      if (secretKey && secretKey.trim() !== 'admin123') {
+        isDefaultSecretKey = false;
+      }
+    }
+    // Kiểm tra thêm nếu bảng User đã có tài khoản super_admin
+    if (!hasSuperAdminEmail) {
+      const adminUser = auth.userRepo.findOne(u => u.system_role === 'super_admin');
+      if (adminUser && adminUser.email) {
+        hasSuperAdminEmail = true;
+      }
+    }
+  } catch (e) {}
+
+  return {
+    isSuperAdminConfigured: hasSuperAdminEmail,
+    isDefaultKey: isDefaultSecretKey
   };
 }
 

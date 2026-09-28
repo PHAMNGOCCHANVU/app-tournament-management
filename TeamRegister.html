@@ -4,8 +4,9 @@
    */
   window.App = window.App || {};
   window.App.views = window.App.views || {};
+  if (typeof App !== 'undefined') App.views = window.App.views;
 
-  App.views.team_register = function (params = {}) {
+  App.views.team_register = window.App.views.team_register = function (params = {}) {
     const container = document.getElementById('app-view');
     const selectedTournamentId = params.tournamentId || '';
 

@@ -5,6 +5,13 @@ const vm = require('vm');
 // Mock Spreadsheet for Testing
 const mockSpreadsheet = {
   sheets: {},
+  getOwner() {
+    return {
+      getEmail() {
+        return 'admin@test.com';
+      }
+    };
+  },
   getSheetByName(name) {
     return this.sheets[name] || null;
   },

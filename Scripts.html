@@ -27,9 +27,12 @@
     libero: 'Tự do (Libero)'
   };
 
-  const App = {
+  window.App = window.App || {};
+  window.App.views = window.App.views || {};
+
+  const App = Object.assign(window.App, {
     state: {
-      user: { email: '', role: 'viewer', isLoggedIn: false },
+      user: { email: '', role: 'viewer', isLoggedIn: false, authResolved: false },
       tournamentRoles: {},  // Per-tournament role cache: { "T001": "organizer", "T002": "referee" }
       currentPage: 'dashboard',
       params: {}
@@ -84,13 +87,25 @@
 
         // Render target view template with polling to prevent race conditions during script loading
         let attempts = 0;
-        const maxAttempts = 20; // 20 * 50ms = 1000ms max wait for partial script execution
+        const maxAttempts = 60; // 60 * 100ms = 6000ms max wait for partial script execution
         const checkAndRenderView = () => {
-          if (typeof App.views[pageName] === 'function') {
-            App.views[pageName](params);
+          const views = (window.App && window.App.views) ? window.App.views : (App.views || {});
+          if (typeof views[pageName] === 'function') {
+            try {
+              views[pageName](params);
+            } catch (renderErr) {
+              console.error(`Error rendering view [${pageName}]:`, renderErr);
+              container.innerHTML = `
+                <div class="card" style="text-align:center; padding:3rem;">
+                  <h2 style="color:var(--danger, #ef4444);">Lỗi hiển thị trang</h2>
+                  <p style="color:var(--text-muted); margin-top:0.5rem;">Đã xảy ra lỗi khi tải giao diện [${pageName}]: ${renderErr.message}</p>
+                  <button class="btn btn-primary" style="margin-top:1.5rem;" onclick="App.router.navigateTo('dashboard')">Về Trang chủ</button>
+                </div>
+              `;
+            }
           } else if (attempts < maxAttempts) {
             attempts++;
-            setTimeout(checkAndRenderView, 50);
+            setTimeout(checkAndRenderView, 100);
           } else {
             container.innerHTML = `
               <div class="card" style="text-align:center; padding:3rem;">
@@ -108,7 +123,7 @@
     /**
      * Views Handler Registry
      */
-    views: {},
+    views: window.App.views,
 
     /**
      * Toast Notifications Engine
@@ -262,7 +277,7 @@
       App.server.call('apiGetAuthContext', '', '')
         .then(res => {
           if (res) {
-            App.state.user = Object.assign({}, App.state.user, res);
+            App.state.user = Object.assign({}, App.state.user, res, { authResolved: true });
             App.updateUserBadge();
 
             if (res.isSystemAdmin) {
@@ -271,12 +286,25 @@
               if (adminNav) adminNav.style.display = 'inline-block';
               if (mobileAdminNav) mobileAdminNav.style.display = 'block';
             }
+          } else {
+            App.state.user.authResolved = true;
+            App.updateUserBadge();
           }
         })
-        .catch(err => console.log('Auth check error:', err));
+        .catch(err => {
+          console.log('Auth check error:', err);
+          App.state.user.authResolved = true;
+          App.updateUserBadge();
+        });
 
-      const initialPage = window.INITIAL_PAGE || 'dashboard';
-      const tournamentId = window.INITIAL_TOURNAMENT_ID || '';
+      let initialPage = window.INITIAL_PAGE;
+      if (!initialPage || initialPage.indexOf('<?') !== -1) {
+        initialPage = 'dashboard';
+      }
+      let tournamentId = window.INITIAL_TOURNAMENT_ID;
+      if (!tournamentId || tournamentId.indexOf('<?') !== -1) {
+        tournamentId = '';
+      }
       App.router.navigateTo(initialPage, { tournamentId });
     },
 
@@ -293,9 +321,12 @@
 
       const currentTId = App.state.params ? App.state.params.tournamentId : '';
       const roleInCurrentT = currentTId ? App.getRoleForTournament(currentTId) : '';
-      const roleLabel = roleInCurrentT || App.state.user.role || 'viewer';
+      const isSysAdmin = !!App.state.user.isSystemAdmin;
+      const roleLabel = roleInCurrentT || (isSysAdmin ? 'Super Admin' : (App.state.user.role || 'viewer'));
 
       const roleStyles = {
+        'Super Admin': 'background:linear-gradient(135deg,#dc2626,#991b1b); color:#fff;',
+        super_admin: 'background:linear-gradient(135deg,#dc2626,#991b1b); color:#fff;',
         organizer: 'background:linear-gradient(135deg,#6366f1,#8b5cf6); color:#fff;',
         referee: 'background:linear-gradient(135deg,#10b981,#059669); color:#fff;',
         player: 'background:linear-gradient(135deg,#f59e0b,#d97706); color:#fff;',
@@ -303,7 +334,6 @@
       };
 
       const initialChar = displayEmail ? displayEmail.charAt(0).toUpperCase() : '👤';
-      const isSysAdmin = !!App.state.user.isSystemAdmin;
 
       if (displayEmail) {
         // Render PC Avatar + Popover Dropdown
@@ -317,7 +347,7 @@
               <div class="user-popover-email">${displayEmail}</div>
               <div class="user-popover-badge">
                 <span class="user-badge" style="${roleStyles[roleLabel] || roleStyles.viewer}">${roleLabel}</span>
-                ${isSysAdmin ? `<span class="user-badge" style="background:#dc2626; color:#fff; margin-left:4px;">Super Admin</span>` : ''}
+                ${(isSysAdmin && roleLabel !== 'Super Admin') ? `<span class="user-badge" style="background:#dc2626; color:#fff; margin-left:4px;">Super Admin</span>` : ''}
               </div>
               <div class="user-popover-actions">
                 ${isSysAdmin ? `
@@ -343,7 +373,7 @@
               <div style="overflow:hidden; flex:1;">
                 <div style="font-weight:600; font-size:0.85rem; color:#fff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${displayEmail}</div>
                 <span class="user-badge" style="margin-top:0.15rem; font-size:0.7rem; ${roleStyles[roleLabel] || roleStyles.viewer}">${roleLabel}</span>
-                ${isSysAdmin ? `<span class="user-badge" style="background:#dc2626; color:#fff; font-size:0.65rem; margin-left:4px;">Admin</span>` : ''}
+                ${(isSysAdmin && roleLabel !== 'Super Admin') ? `<span class="user-badge" style="background:#dc2626; color:#fff; font-size:0.65rem; margin-left:4px;">Admin</span>` : ''}
               </div>
             </div>
 
@@ -351,7 +381,7 @@
               <div class="user-popover-email">${displayEmail}</div>
               <div class="user-popover-badge">
                 <span class="user-badge" style="${roleStyles[roleLabel] || roleStyles.viewer}">${roleLabel}</span>
-                ${isSysAdmin ? `<span class="user-badge" style="background:#dc2626; color:#fff; margin-left:4px;">Super Admin</span>` : ''}
+                ${(isSysAdmin && roleLabel !== 'Super Admin') ? `<span class="user-badge" style="background:#dc2626; color:#fff; margin-left:4px;">Super Admin</span>` : ''}
               </div>
               <div class="user-popover-actions">
                 ${isSysAdmin ? `
@@ -367,14 +397,16 @@
           `;
         }
       } else {
+        const authLoading = !App.state.user.authResolved;
+        const fallbackText = authLoading ? 'Đang xác thực...' : '👤 Khách';
         if (userEl) {
           userEl.innerHTML = `
-            <span style="color:var(--text-muted); font-size:0.85rem;">Đang xác thực...</span>
+            <span style="color:var(--text-muted); font-size:0.85rem;" title="${authLoading ? 'Đang kiểm tra thông tin đăng nhập' : 'Chưa đăng nhập'}">${fallbackText}</span>
           `;
         }
         if (mobileUserEl) {
           mobileUserEl.innerHTML = `
-            <span style="color:var(--text-muted); font-size:0.85rem;">Đang xác thực...</span>
+            <span style="color:var(--text-muted); font-size:0.85rem;" title="${authLoading ? 'Đang kiểm tra thông tin đăng nhập' : 'Chưa đăng nhập'}">${fallbackText}</span>
           `;
         }
       }
@@ -517,7 +549,7 @@
         this.isPaused = false;
       }
     }
-  };
+  });
 
   /**
    * Global Client-side Date Formatting Helper
@@ -567,7 +599,11 @@
 
   window.App = App;
 
-  document.addEventListener('DOMContentLoaded', () => {
+  // Khởi tạo ngay nếu DOM đã sẵn sàng, hoặc lắng nghe cả DOMContentLoaded và load
+  if (document.readyState === 'complete' || document.readyState === 'interactive') {
     App.init();
-  });
+  } else {
+    document.addEventListener('DOMContentLoaded', () => App.init());
+    window.addEventListener('load', () => App.init());
+  }
 </script>
