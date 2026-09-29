@@ -146,7 +146,7 @@
             </div>
             <div class="form-group" style="margin-bottom:1rem;">
               <label class="form-label">Ảnh Mã QR Thanh Toán</label>
-              <input type="file" id="manage-qr-file-input" accept="image/*" class="form-control" onchange="handleQrFileSelect(event)" style="background:rgba(15,23,42,0.3); border-color:var(--border);">
+              <input type="file" id="manage-qr-file-input" accept="image/png, image/jpeg, image/jpg, image/webp" class="form-control" onchange="handleQrFileSelect(event)" style="background:rgba(15,23,42,0.3); border-color:var(--border);">
               <input type="hidden" id="manage-qr-code-url">
               <div id="manage-qr-preview-container" style="margin-top:0.5rem; display:none;">
                 <img id="manage-qr-preview-img" src="" style="max-height:110px; border-radius:6px; border:1px solid var(--border);">

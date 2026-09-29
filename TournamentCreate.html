@@ -91,7 +91,7 @@
 
               <div class="form-group">
                 <label class="form-label">Tải Lên Ảnh Mã QR Nhận Tiền (VietQR / Ngân Hàng)</label>
-                <input type="file" id="create-qr-file-input" accept="image/*" class="form-control" onchange="handleCreateQrFileSelect(event)" style="background:rgba(15,23,42,0.3); border-color:var(--border);">
+                <input type="file" id="create-qr-file-input" accept="image/png, image/jpeg, image/jpg, image/webp" class="form-control" onchange="handleCreateQrFileSelect(event)" style="background:rgba(15,23,42,0.3); border-color:var(--border);">
                 <input type="hidden" id="create-qr-code-url">
                 <div id="create-qr-preview-container" style="margin-top:0.75rem; display:none;">
                   <img id="create-qr-preview-img" src="" style="max-height:140px; border-radius:6px; border:1px solid var(--border); box-shadow:0 4px 10px rgba(0,0,0,0.3);">
