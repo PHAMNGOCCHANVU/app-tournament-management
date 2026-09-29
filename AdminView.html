@@ -3,7 +3,10 @@
    * System Admin Panel View Controller
    * Multi-module control room for Super Admin
    */
-  App.views.admin_view = function (params = {}) {
+  window.App = window.App || {};
+  window.App.views = window.App.views || {};
+
+  window.App.views.admin_view = function (params = {}) {
     const container = document.getElementById('app-view');
     
     container.innerHTML = `

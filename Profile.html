@@ -2,7 +2,10 @@
   /**
    * User Profile & Personal Dashboard View Controller
    */
-  App.views.profile = function(params = {}) {
+  window.App = window.App || {};
+  window.App.views = window.App.views || {};
+
+  window.App.views.profile = function(params = {}) {
     const container = document.getElementById('app-view');
 
     container.innerHTML = `

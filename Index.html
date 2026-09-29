@@ -104,10 +104,7 @@
     window.INITIAL_TOURNAMENT_ID = "<?= tournamentId ?>";
   </script>
 
-  <!-- Include Core Scripts Engine -->
-  <?!= include('Scripts'); ?>
-
-  <!-- Include Page Partial View Controllers -->
+  <!-- Include Page Partial View Controllers (Loaded BEFORE Scripts engine) -->
   <?!= include('Dashboard'); ?>
   <?!= include('TournamentCreate'); ?>
   <?!= include('TournamentManage'); ?>
@@ -118,6 +115,9 @@
   <?!= include('BracketView'); ?>
   <?!= include('Profile'); ?>
   <?!= include('AdminView'); ?>
+
+  <!-- Include Core Scripts Engine (Loaded LAST so all views are already registered) -->
+  <?!= include('Scripts'); ?>
 
 </body>
 </html>

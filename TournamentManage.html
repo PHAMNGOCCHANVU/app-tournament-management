@@ -2,7 +2,10 @@
   /**
    * Tournament Management View Controller (Organizer Control Room)
    */
-  App.views.tournament_manage = function(params = {}) {
+  window.App = window.App || {};
+  window.App.views = window.App.views || {};
+
+  window.App.views.tournament_manage = function(params = {}) {
     const container = document.getElementById('app-view');
     const tournamentId = params.tournamentId;
 

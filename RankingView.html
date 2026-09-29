@@ -3,7 +3,10 @@
    * Standings & Ranking View Controller
    * Optimized: Uses apiGetRankingPageBundle for single round-trip data loading
    */
-  App.views.ranking = function(params = {}) {
+  window.App = window.App || {};
+  window.App.views = window.App.views || {};
+
+  window.App.views.ranking = function(params = {}) {
     const container = document.getElementById('app-view');
     const selectedTournamentId = params.tournamentId || '';
 

@@ -2,7 +2,10 @@
   /**
    * Elimination Bracket Tree Visualizer View Controller
    */
-  App.views.bracket = function(params = {}) {
+  window.App = window.App || {};
+  window.App.views = window.App.views || {};
+
+  window.App.views.bracket = function(params = {}) {
     const container = document.getElementById('app-view');
     const selectedTournamentId = params.tournamentId || '';
 

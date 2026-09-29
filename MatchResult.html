@@ -1,9 +1,11 @@
 <script>
   /**
    * Match Result Entry View Controller (Referee/Organizer interface)
-   * Enhanced with Multi-Set Score Engine (Pickleball, Badminton) & Match State Machine
    */
-  App.views.match_result = function(params = {}) {
+  window.App = window.App || {};
+  window.App.views = window.App.views || {};
+
+  window.App.views.match_result = function(params = {}) {
     const container = document.getElementById('app-view');
     const matchId = params.matchId;
 
