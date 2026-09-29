@@ -3,6 +3,13 @@
    * Client Application State & Single Page Application (SPA) Engine
    * Auth Mode: "Execute as user accessing the web app" (Native Google Auth)
    */
+  window.lastJsErrors = window.lastJsErrors || [];
+  window.addEventListener('error', function (e) {
+    const errInfo = (e.message || 'Unknown error') + (e.filename ? ' at ' + e.filename.split('/').pop() : '') + (e.lineno ? ':' + e.lineno : '');
+    console.error('Captured JS Error:', errInfo);
+    window.lastJsErrors.push(errInfo);
+  });
+
   const CATEGORY_LABELS = {
     open: 'Tất cả (Mở)',
     mens: 'Nam',
@@ -59,7 +66,7 @@
      * SPA Router
      */
     router: {
-      navigateTo: function (pageName, params = {}) {
+      navigateTo: function (pageName, params = {}, retryCount = 0) {
         App.state.currentPage = pageName;
         App.state.params = params;
 
@@ -75,14 +82,16 @@
         const container = document.getElementById('app-view');
         if (!container) return;
 
-        container.innerHTML = `
-          <div class="loader-center">
-            <div class="spinner"></div>
-            <p>Đang tải dữ liệu...</p>
-          </div>
-        `;
+        if (retryCount === 0) {
+          container.innerHTML = `
+            <div class="loader-center">
+              <div class="spinner"></div>
+              <p>Đang tải dữ liệu...</p>
+            </div>
+          `;
+        }
 
-        // Render target view template
+        // Render target view template with graceful retry
         setTimeout(() => {
           if (typeof App.views[pageName] === 'function') {
             try {
@@ -93,15 +102,34 @@
                 <div class="card" style="text-align:center; padding:3rem;">
                   <h2 style="color:var(--danger, #ef4444);">Lỗi hiển thị trang</h2>
                   <p style="color:var(--text-muted); margin-top:0.5rem;">Đã xảy ra lỗi khi tải giao diện [${pageName}]: ${renderErr.message}</p>
+                  <pre style="text-align:left; background:#1e293b; color:#f87171; padding:1rem; border-radius:6px; font-size:0.8rem; overflow:auto; margin-top:1rem;">${renderErr.stack || renderErr}</pre>
                   <button class="btn btn-primary" style="margin-top:1.5rem;" onclick="App.router.navigateTo('dashboard')">Về Trang chủ</button>
                 </div>
               `;
             }
+          } else if (retryCount < 5) {
+            // Graceful retry up to 5 times (total 500ms) for script compilation
+            App.router.navigateTo(pageName, params, retryCount + 1);
           } else {
+            const availableViews = Object.keys(App.views || {});
+            const errorsList = (window.lastJsErrors && window.lastJsErrors.length)
+              ? `<div style="margin-top:1rem; padding:1rem; background:rgba(239,68,68,0.15); border:1px solid var(--danger); border-radius:8px; text-align:left;">
+                   <strong style="color:var(--danger);">⚠️ Phát hiện lỗi JavaScript trong quá trình nạp:</strong>
+                   <ul style="margin:0.5rem 0 0 1.25rem; color:#fca5a5; font-family:monospace; font-size:0.85rem;">
+                     ${window.lastJsErrors.map(err => `<li>${err}</li>`).join('')}
+                   </ul>
+                 </div>`
+              : `<p style="color:var(--text-dim); font-size:0.85rem; margin-top:0.5rem;">Không phát hiện lỗi runtime trong Console.</p>`;
+
             container.innerHTML = `
-              <div class="card" style="text-align:center; padding:3rem;">
-                <h2>Trang không tồn tại</h2>
-                <p style="color:var(--text-muted); margin-top:0.5rem;">Không tìm thấy view [${pageName}]</p>
+              <div class="card" style="text-align:center; padding:3rem; max-width:650px; margin:2rem auto;">
+                <h2 style="color:var(--danger, #ef4444);">Trang không tồn tại</h2>
+                <p style="color:var(--text-muted); margin-top:0.5rem;">Không tìm thấy view [<b>${pageName}</b>]</p>
+                <div style="margin-top:1rem; padding:0.75rem; background:rgba(15,23,42,0.6); border-radius:6px; font-size:0.85rem; color:var(--text-muted);">
+                  Danh sách view đã sẵn sàng (${availableViews.length}):<br>
+                  <code style="color:var(--primary); font-weight:bold;">${availableViews.join(', ') || 'Chưa có view nào'}</code>
+                </div>
+                ${errorsList}
                 <button class="btn btn-primary" style="margin-top:1.5rem;" onclick="App.router.navigateTo('dashboard')">Về Trang chủ</button>
               </div>
             `;

@@ -49,7 +49,11 @@ function doPost(e) {
  * Global helper for including HTML partials inside Index.html
  */
 function include(filename) {
-  return HtmlService.createHtmlOutputFromFile(filename).getContent();
+  try {
+    return HtmlService.createHtmlOutputFromFile(filename).getContent();
+  } catch (err) {
+    return '<script>console.error("SERVER INCLUDE ERROR for ' + filename + ': ' + err.message + '"); if (window.lastJsErrors) window.lastJsErrors.push("SERVER INCLUDE ERROR: ' + filename + ' - ' + err.message + '");</script>';
+  }
 }
 
 /**
