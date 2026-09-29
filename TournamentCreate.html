@@ -2,10 +2,7 @@
   /**
    * Tournament Create View Controller
    */
-  window.App = window.App || {};
-  window.App.views = window.App.views || {};
-
-  window.App.views.tournament_create = function (params = {}) {
+  App.views.tournament_create = function (params = {}) {
     const container = document.getElementById('app-view');
     const currentUserEmail = App.state.user.email || '';
 

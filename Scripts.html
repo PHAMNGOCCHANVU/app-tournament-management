@@ -27,10 +27,7 @@
     libero: 'Tự do (Libero)'
   };
 
-  window.App = window.App || {};
-  window.App.views = window.App.views || {};
-
-  const App = Object.assign(window.App, {
+  var App = {
     state: {
       user: { email: '', role: 'viewer', isLoggedIn: false, authResolved: false },
       tournamentRoles: {},  // Per-tournament role cache: { "T001": "organizer", "T002": "referee" }
@@ -85,14 +82,11 @@
           </div>
         `;
 
-        // Render target view template with polling to prevent race conditions during script loading
-        let attempts = 0;
-        const maxAttempts = 60; // 60 * 100ms = 6000ms max wait for partial script execution
-        const checkAndRenderView = () => {
-          const views = (window.App && window.App.views) ? window.App.views : (App.views || {});
-          if (typeof views[pageName] === 'function') {
+        // Render target view template
+        setTimeout(() => {
+          if (typeof App.views[pageName] === 'function') {
             try {
-              views[pageName](params);
+              App.views[pageName](params);
             } catch (renderErr) {
               console.error(`Error rendering view [${pageName}]:`, renderErr);
               container.innerHTML = `
@@ -103,9 +97,6 @@
                 </div>
               `;
             }
-          } else if (attempts < maxAttempts) {
-            attempts++;
-            setTimeout(checkAndRenderView, 100);
           } else {
             container.innerHTML = `
               <div class="card" style="text-align:center; padding:3rem;">
@@ -115,15 +106,14 @@
               </div>
             `;
           }
-        };
-        checkAndRenderView();
+        }, 100);
       }
     },
 
     /**
      * Views Handler Registry
      */
-    views: window.App.views,
+    views: {},
 
     /**
      * Toast Notifications Engine
@@ -549,7 +539,7 @@
         this.isPaused = false;
       }
     }
-  });
+  };
 
   /**
    * Global Client-side Date Formatting Helper
@@ -599,11 +589,13 @@
 
   window.App = App;
 
-  // Khởi tạo ngay nếu DOM đã sẵn sàng, hoặc lắng nghe cả DOMContentLoaded và load
-  if (document.readyState === 'complete' || document.readyState === 'interactive') {
-    App.init();
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
+      App.init();
+    });
   } else {
-    document.addEventListener('DOMContentLoaded', () => App.init());
-    window.addEventListener('load', () => App.init());
+    setTimeout(() => {
+      App.init();
+    }, 50);
   }
 </script>

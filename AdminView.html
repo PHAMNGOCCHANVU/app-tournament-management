@@ -3,10 +3,7 @@
    * System Admin Panel View Controller
    * Multi-module control room for Super Admin
    */
-  window.App = window.App || {};
-  window.App.views = window.App.views || {};
-
-  window.App.views.admin_view = function (params = {}) {
+  App.views.admin_view = function (params = {}) {
     const container = document.getElementById('app-view');
     
     container.innerHTML = `
@@ -20,7 +17,14 @@
 
   let adminDataCache = null;
   let currentAdminTab = 'kpi';
-  let currentAdminPasscode = sessionStorage.getItem('admin_passcode') || '';
+  let currentAdminPasscode = '';
+  try {
+    if (typeof sessionStorage !== 'undefined' && sessionStorage) {
+      currentAdminPasscode = sessionStorage.getItem('admin_passcode') || '';
+    }
+  } catch (e) {
+    currentAdminPasscode = '';
+  }
 
   function loadAdminDashboardData() {
     App.server.call('apiGetAdminDashboardData', currentAdminPasscode)
@@ -62,7 +66,13 @@
     App.server.call('apiVerifyAdminPasscode', code)
       .then(res => {
         currentAdminPasscode = code;
-        sessionStorage.setItem('admin_passcode', code);
+        try {
+          if (typeof sessionStorage !== 'undefined' && sessionStorage) {
+            sessionStorage.setItem('admin_passcode', code);
+          }
+        } catch (e) {
+          console.warn('sessionStorage is unavailable:', e);
+        }
         App.state.user.isSystemAdmin = true;
         App.toast.show('Xác thực quyền Quản trị thành công!', 'success');
         loadAdminDashboardData();
